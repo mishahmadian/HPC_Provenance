@@ -16,8 +16,8 @@
   scheduler (i.e PBS, Slurm, UGE/SGE, ...)
 """
 
-from packages.Config import AgentConfig, ConfigReadExcetion
-from packages.Communication import Producer, CommunicationExp
+from Config import AgentConfig, ConfigReadExcetion
+from Communication import Producer, CommunicationExp
 from threading import Thread, Event
 from Queue import Queue
 import subprocess
@@ -26,7 +26,6 @@ import sys
 import signal
 import socket
 import json
-
 
 #
 #  Defined a Class for collecting Jobstats on MDS(s) and OSS(s)
@@ -129,64 +128,66 @@ class PublishJobstats(Thread):
 class MonitoringExitExp(Exception):
     pass
 
-# Handle the SIGINT and SIGTERM signals in order to shutdown
-# the Collector agent
 #
-def agent_exit(sig, frame):
-    raise MonitoringExitExp
-
-# Main Function
-def main():
-    collJstat_Thr = None
-    pubJstat_Thr = None
-    # Register signal handler
-    signal.signal(signal.SIGINT, agent_exit)
-    signal.signal(signal.SIGTERM, agent_exit)
-
-    try:
-        jobstat_Q = Queue()
-
-        # Jobstat Collection thread
-        collJstat_Thr = CollectJobstats(jobstat_Q)
-        collJstat_Thr.start()
-
-        # JobStat producer thread
-        pubJstat_Thr = PublishJobstats(jobstat_Q)
-        pubJstat_Thr.start()
-
-        # Keep the main thread running to catch signals
-        while True:
-            time.sleep(0.5)
-            if not collJstat_Thr.isAlive() or not pubJstat_Thr.isAlive():
-                raise MonitoringExitExp
-
-    except MonitoringExitExp:
-        print ("\nAgent is shutting down..."),
-
-    except ConfigReadExcetion as confExp:
-        print confExp.getMessage()
-
-    except CommunicationExp as commExp:
-        print commExp.getMessage()
-
-    except Exception as exp:
-        print str(exp)
-
-    finally:
-            try:
-                if not collJstat_Thr == None:
-                    collJstat_Thr.exit_flag.set()
-                    collJstat_Thr.join()
-                if not pubJstat_Thr == None:
-                    pubJstat_Thr.exit_flag.set()
-                    pubJstat_Thr.join()
-
-                print "Done!"
-
-            except:
-                pass
+# The main class which generates the Lustre statistic collector thread
+# and communication channel thread
+# this class is executed by the main Daemon process
 #
-# Main
-#
-if __name__ == "__main__":
-    main()
+class IO_Collector:
+    def __init__(self):
+        self.collJstat_Thr = None
+        self.pubJstat_Thr = None
+
+        # Register signal handler
+        signal.signal(signal.SIGINT, self.agent_exit)
+        signal.signal(signal.SIGTERM, self.agent_exit)
+
+    # Handle the SIGINT and SIGTERM signals in order to shutdown
+    # the Collector agent
+    def agent_exit(self, sig, frame):
+        raise MonitoringExitExp
+
+    # Main Function
+    def agent_run(self):
+        try:
+            jobstat_Q = Queue()
+
+            # Jobstat Collection thread
+            self.collJstat_Thr = CollectJobstats(jobstat_Q)
+            self.collJstat_Thr.start()
+
+            # JobStat producer thread
+            self.pubJstat_Thr = PublishJobstats(jobstat_Q)
+            self.pubJstat_Thr.start()
+
+            # Keep the main thread running to catch signals
+            while True:
+                time.sleep(0.5)
+                if not self.collJstat_Thr.isAlive() or not self.pubJstat_Thr.isAlive():
+                    raise MonitoringExitExp
+
+        except MonitoringExitExp:
+            print ("\nAgent is shutting down..."),
+
+        except ConfigReadExcetion as confExp:
+            print confExp.getMessage()
+
+        except CommunicationExp as commExp:
+            print commExp.getMessage()
+
+        except Exception as exp:
+            print str(exp)
+
+        finally:
+                try:
+                    if not self.collJstat_Thr == None:
+                        self.collJstat_Thr.exit_flag.set()
+                        self.collJstat_Thr.join()
+                    if not self.pubJstat_Thr == None:
+                        self.pubJstat_Thr.exit_flag.set()
+                        self.pubJstat_Thr.join()
+
+                    print "Done!"
+
+                except:
+                    pass

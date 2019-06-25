@@ -25,7 +25,7 @@ class AgentConfig:
         # Track the config file changes
         self.__cached_stamp = 0
         # Config file name and path
-        configFile = os.path.dirname(__file__) + '/../agent.conf'
+        configFile = os.path.dirname(__file__) + '/../conf/agent.conf'
         realPath = os.path.realpath(configFile)
         self.__filepath = realPath
 
@@ -42,7 +42,7 @@ class AgentConfig:
             # Iterate over options under each section of the config file
             for option in config[section]:
                 if not self.__parser.has_option(section, option):
-                    raise ConfigReadExcetion("The '%s' has not been defined under [%s] section in agent.conf" \
+                    raise ConfigReadExcetion("The '%s' is missing under [%s] section in agent.conf" \
                                                 % (option, section))
 
     # Check if config file has been modified since last time
