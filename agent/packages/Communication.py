@@ -1,4 +1,3 @@
-#!/usr/bin/python
 # -*- coding: utf-8 -*-
 """
     RabbitMQ Interface: Send/publish the collected logs to

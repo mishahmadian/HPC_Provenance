@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 |------------------------------------------------------|
-|          Luster JobSTAT Monitoring Agent             |
+|         Luster I/O Statistics Collector Agent        |
 |                     Version 1.0                      |
 |                                                      |
 |       High Performance Computing Center (HPCC)       |
@@ -10,7 +10,7 @@
 |                                                      |
 |       Misha Ahmadian (misha.ahmadian@ttu.edu)        |
 |------------------------------------------------------|
-  This Code has to be running on Luster MDT(s) or
+  This program has to be running on Luster MDT(s) or
   OSS(s) in order to Collect I/O operations per jobs
   which are submitted bu user to any type of resource
   scheduler (i.e PBS, Slurm, UGE/SGE, ...)

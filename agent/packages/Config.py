@@ -1,10 +1,11 @@
-#!/usr/bin/python
 # -*- coding: utf-8 -*-
 """
     Read and parse the "../agent.conf" file
 
-    *** This class is Singleton in order to keep ne instance of
-        the updated configuration in memory for all modules
+        1. Read and pars the config file
+        2. Validate the config file contents
+        3. Apply the modified changes immediately (No need to restart the agent)
+        4. Provide external modules with requested parameters
 
     Misha Ahmadian (misha.ahmadian@ttu.edu)
 """
@@ -181,13 +182,3 @@ class ConfigReadExcetion(Exception):
 
     def getMessage(self):
         return self.message
-
-if __name__ == "__main__":
-    while True:
-        try:
-            conf = AgentConfig.getInstance()
-            print conf.getOSS_hosts()
-
-            time.sleep(2)
-        except ConfigReadExcetion as confExp:
-            print confExp.getMessage()

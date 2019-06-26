@@ -1,19 +1,18 @@
-#!/usr/bin/python
 # -*- coding: utf-8 -*-
 """
-|------------------------------------------------------|
-|          Luster JobSTAT Monitoring Agent             |
-|                     Version 1.0                      |
-|                                                      |
-|       High Performance Computing Center (HPCC)       |
-|               Texas Tech University                  |
-|                                                      |
-|       Misha Ahmadian (misha.ahmadian@ttu.edu)        |
-|------------------------------------------------------|
-  This Code has to be running on Luster MDT(s) or
-  OSS(s) in order to Collect I/O operations per jobs
-  which are submitted bu user to any type of resource
-  scheduler (i.e PBS, Slurm, UGE/SGE, ...)
+    The main  module which collects the I/O statistics from lustre
+    Servers such as MDS(s) and OSS(s). This module spawn three Threads:
+
+        1. CollectIOStats: Collecting the I/O statisitcs from lustre within
+           the specified time intervals and store it in a Queue
+
+        2. Pick collected I/O stats from the Queue and publish (send) them
+           to the server which for further procees.
+
+        3. IO_Collector which is the main thread to be used in Agent Deamon
+
+
+ Misha ahmadian (misha.ahmadian@ttu.edu)
 """
 
 from Config import AgentConfig, ConfigReadExcetion
@@ -30,7 +29,7 @@ import json
 #
 #  Defined a Class for collecting Jobstats on MDS(s) and OSS(s)
 #
-class CollectJobstats(Thread):
+class CollectIOstats(Thread):
     def __init__(self, jobstat_Q):
         Thread.__init__(self)
         self.exit_flag = Event()
@@ -85,7 +84,7 @@ class CollectJobstats(Thread):
 #
 #  Defined Class for Sending/Publishing Jobstats to Monitoring Server program
 #
-class PublishJobstats(Thread):
+class PublishIOstats(Thread):
     def __init__(self, jobstat_Q):
         Thread.__init__(self)
         self.exit_flag = Event()
@@ -135,7 +134,7 @@ class MonitoringExitExp(Exception):
 #
 class IO_Collector:
     def __init__(self):
-        self.collJstat_Thr = None
+        self.IOStats_Thr = None
         self.pubJstat_Thr = None
 
         # Register signal handler
@@ -153,17 +152,17 @@ class IO_Collector:
             jobstat_Q = Queue()
 
             # Jobstat Collection thread
-            self.collJstat_Thr = CollectJobstats(jobstat_Q)
-            self.collJstat_Thr.start()
+            self.IOStats_Thr = CollectIOstats(jobstat_Q)
+            self.IOStats_Thr.start()
 
             # JobStat producer thread
-            self.pubJstat_Thr = PublishJobstats(jobstat_Q)
+            self.pubJstat_Thr = PublishIOstats(jobstat_Q)
             self.pubJstat_Thr.start()
 
             # Keep the main thread running to catch signals
             while True:
                 time.sleep(0.5)
-                if not self.collJstat_Thr.isAlive() or not self.pubJstat_Thr.isAlive():
+                if not self.IOStats_Thr.isAlive() or not self.pubJstat_Thr.isAlive():
                     raise MonitoringExitExp
 
         except MonitoringExitExp:
@@ -180,9 +179,9 @@ class IO_Collector:
 
         finally:
                 try:
-                    if not self.collJstat_Thr == None:
-                        self.collJstat_Thr.exit_flag.set()
-                        self.collJstat_Thr.join()
+                    if not self.IOStats_Thr == None:
+                        self.IOStats_Thr.exit_flag.set()
+                        self.IOStats_Thr.join()
                     if not self.pubJstat_Thr == None:
                         self.pubJstat_Thr.exit_flag.set()
                         self.pubJstat_Thr.join()
