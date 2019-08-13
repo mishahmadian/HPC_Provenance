@@ -18,13 +18,14 @@
 from Config import AgentConfig, ConfigReadExcetion
 from Communication import Producer, CommunicationExp
 from threading import Thread, Event
+from ntplib import NTPClient
 from Queue import Queue
 import subprocess
-import time
 import sys
 import signal
 import socket
 import json
+import time
 
 #
 #  Defined a Class for collecting Jobstats on MDS(s) and OSS(s)
@@ -39,7 +40,7 @@ class CollectIOstats(Thread):
         # Set Jobstat cleanup interval
         self.__setMaxAutoCleanup(self.config.getMaxJobstatAge())
 
-    # Extends Thread.run()
+    # Implement Thread.run()
     def run(self):
         while not self.exit_flag.is_set():
             try:
@@ -51,7 +52,8 @@ class CollectIOstats(Thread):
                     self.jobstat_Q.put(jobstat_out)
                     # Clear JobStats logs immediately to free space
                     self.__clearJobStats(serverParam)
-                #
+
+                # Set time interval for Collecting IO stats
                 waitInterval = self.config.getJobstatsInterval()
                 self.exit_flag.wait(waitInterval)
 
@@ -90,6 +92,7 @@ class PublishIOstats(Thread):
         self.exit_flag = Event()
         self.jobstat_Q = jobstat_Q
         self.hostname = socket.gethostname()
+        self.config = AgentConfig()
 
         try:
             self.producer = Producer()
@@ -97,10 +100,12 @@ class PublishIOstats(Thread):
         except CommunicationExp:
             raise
 
+
     def run(self):
         while not self.exit_flag.is_set():
             if not self.jobstat_Q.empty():
                 jobstat_msg = self.jobstat_Q.get()
+                print jobstat_msg
                 timestamp = time.time()
                 message_body = {'server' : self.hostname,
                                 'timestamp' : timestamp,
@@ -111,7 +116,7 @@ class PublishIOstats(Thread):
 
                 # Send the message to Server
                 try:
-                    self.producer.send(message_json)
+                    self.producer.send(jobstat_msg)
 
                 except CommunicationExp as commExp:
                     print commExp.getMessage()
@@ -120,6 +125,22 @@ class PublishIOstats(Thread):
             #
             sendingInterval = self.producer.getInterval()
             self.exit_flag.wait(sendingInterval)
+
+    # ------INCOMPLETE--------
+    # The NTP option can be add in the future, but the machine time
+    # will be used for timestamp assuming that the machine is connected
+    # to a reliable NTP server
+    def __get_ntp_time(self):
+        ntp = NTPClient()
+        ntp_server = self.config.getNTPServer()
+        try:
+            response = ntp.request(ntp_server)
+            return response.tx_time
+        except NTPException as ntpExp:
+            print str(ntpExp)
+            self.exit_flag.set()
+
+
 
 #
 #  Exception will be raised when SIGINT or SIGTERM are called
@@ -166,7 +187,7 @@ class IO_Collector:
                     raise MonitoringExitExp
 
         except MonitoringExitExp:
-            print ("\nAgent is shutting down..."),
+            print ("\nProvenance agent is shutting down..."),
 
         except ConfigReadExcetion as confExp:
             print confExp.getMessage()
@@ -190,3 +211,10 @@ class IO_Collector:
 
                 except:
                     pass
+
+#
+# Main
+#
+if __name__ == "__main__":
+    ioCollector = IO_Collector()
+    ioCollector.agent_run()
