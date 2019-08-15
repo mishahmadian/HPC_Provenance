@@ -121,7 +121,7 @@ if __name__ == "__main__":
 
     # Check the command syntax
     if len(sys.argv) != 2:
-        print "[Missing Argument]:  provenance_fs_agent.py < start | stop >"
+        print "[Missing Argument]:  provenance_fs_agent.py < start | stop | status >"
         sys.exit(1)
 
     # Get the requested command
@@ -139,5 +139,5 @@ if __name__ == "__main__":
     try:
         switch[command]()
     except KeyError:
-        print "[Wrong Argument]:  provenance_fs_agent.py < start | stop | restart | status >"
+        print "[Wrong Argument]:  provenance_fs_agent.py < start | stop | status >"
         sys.exit(1)
