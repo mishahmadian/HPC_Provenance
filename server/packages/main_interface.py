@@ -7,64 +7,16 @@
         2. Collecting Lustre Changelog data from the client side
         3. Aggregate the data from 1 & 2 in a meaningful way
         4. Store data on Database
-"""
 
-from Communication import ServerConnection, CommunicationExp
-from Config import ServerConfig, ConfigReadExcetion
-from multiprocessing import Process
-from threading import Thread, Event
+ Misha ahmadian (misha.ahmadian@ttu.edu)
+"""
+from communication import CommunicationExp
+from file_io_stats import IOStatsListener
+from config import ConfigReadExcetion
 from time import sleep, ctime
 from queue import Queue
 import signal
-import json
 import sys
-#
-#
-#
-class IOStatsListener(Process):
-    def __init__(self, fsIOstat_Q):
-        Process.__init__(self)
-        self.fsIOstat_Q = fsIOstat_Q
-        self.config = ServerConfig()
-        # Register signal handler
-        signal.signal(signal.SIGINT, self.__exit)
-        signal.signal(signal.SIGTERM, self.__exit)
-
-    # Implement Thread.run()
-    def run(self):
-        try:
-            # Create server connection
-            comm = ServerConnection()
-            # Start collecting IO statistics
-            # ioStats_recv function will take care of incoming data
-            self.__conn, self.__channel = comm.Collect_io_stats(self.ioStats_receiver)
-
-        except CommunicationExp as commExp:
-            print(commExp.getMessage())
-
-        except ProvenanceExitExp:
-            pass
-
-        except Exception as exp:
-            print(str(exp))
-
-    # This function will be triggered as soon as RabbitMQ receives data from
-    # agents on jobStat queue
-    def ioStats_receiver(self, ch, method, properties, body):
-        #parsed = json.loads(body)
-        #data = json.dumps(parsed, indent=4, sort_keys=True)
-        print(" [=>] Received %r\n" %body)
-
-    # Handle the SIGINT and SIGTERM signals in order to shutdown the Process
-    def __exit(self, sig, frame):
-        raise ProvenanceExitExp
-
-
-#
-#  Exception will be raised when SIGINT or SIGTERM are called
-#
-class ProvenanceExitExp(Exception):
-    pass
 
 #
 # The main class which is executed by the main Daemon process
@@ -111,9 +63,15 @@ class Main_Interface:
 
         finally:
             if not self.IOStatsLsn_Proc == None:
-                    self.IOStatsLsn_Proc.terminate()
+                self.IOStatsLsn_Proc.terminate()
 
             print("Done!")
+
+#
+#  Exception will be raised when SIGINT or SIGTERM are called
+#
+class ProvenanceExitExp(Exception):
+    pass
 
 #
 # Main

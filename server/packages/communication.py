@@ -6,7 +6,7 @@
     Misha Ahmadian (misha.ahmadian@ttu.edu)
 """
 from pika import PlainCredentials, ConnectionParameters, BlockingConnection, exceptions
-from Config import ServerConfig, ConfigReadExcetion
+from config import ServerConfig, ConfigReadExcetion
 from enum import Enum
 
 class ServerConnection:
@@ -84,9 +84,9 @@ class ServerConnection:
         channel.basic_consume(callback, queue=queue, no_ack=True)
         # Start consumming: Listenning to the channel and collecting the
         # incoming IO stats from agents
-        #channel.start_consuming()
-        while channel._consumer_infos:
-            channel.connection.process_data_events(time_limit=1)
+        channel.start_consuming()
+        #while channel._consumer_infos:
+        #    channel.connection.process_data_events(time_limit=1)
         #
         return conn, channel
 

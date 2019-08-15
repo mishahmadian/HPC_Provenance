@@ -18,6 +18,7 @@
 from packages.io_collector import IO_Collector
 from daemon import DaemonContext, pidfile
 import signal
+import time
 import os
 import sys
 
@@ -93,8 +94,25 @@ def exit_daemon():
 
 #
 # Reload the Daemon
-def reload_daemon():
+def restart_daemon():
     pass
+
+#
+# Show the current status
+def daemon_status():
+    # Find the PID if the Daemon is running
+    pid = None
+    try:
+        with open(pid_file) as pif:
+            pid = int(pif.readline().strip())
+    except:
+        pass
+
+    # check if the service is already stopped
+    if pid == None:
+        print "The agent_service is not running."
+    else:
+        print "The agent_service is running... pid=[%s]" % pid
 
 #
 # Main
@@ -103,7 +121,7 @@ if __name__ == "__main__":
 
     # Check the command syntax
     if len(sys.argv) != 2:
-        print "[Missing Argument]:  provenance_fs_agent.py < start | stop | reload >"
+        print "[Missing Argument]:  provenance_fs_agent.py < start | stop >"
         sys.exit(1)
 
     # Get the requested command
@@ -113,12 +131,13 @@ if __name__ == "__main__":
     switch = {
         'start' : start_daemon,
         'stop'  : exit_daemon,
-        'reload': reload_daemon
+        'restart': restart_daemon,
+        'status' : daemon_status
     }
 
     # run the command
     try:
         switch[command]()
     except KeyError:
-        print "[Wrong Argument]:  provenance_fs_agent.py < start | stop | reload >"
+        print "[Wrong Argument]:  provenance_fs_agent.py < start | stop | restart | status >"
         sys.exit(1)

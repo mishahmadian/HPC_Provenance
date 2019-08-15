@@ -5,7 +5,7 @@
 
     Misha Ahmadian (misha.ahmadian@ttu.edu)
 """
-from pika import PlainCredentials, ConnectionParameters, BlockingConnection, exceptions
+from pika import PlainCredentials, ConnectionParameters, BlockingConnection, BasicProperties, exceptions
 from Config import AgentConfig, ConfigReadExcetion
 
 class Producer:
@@ -77,7 +77,7 @@ class Producer:
         self.__channel.basic_publish(exchange=self.__prodExch,
                                     routing_key=self.__prodQueue,
                                     body=msg,
-                                    properties=pika.BasicProperties(
+                                    properties=BasicProperties(
                                          delivery_mode = 2, # make message persistent
                                       ))
         # Close Connection

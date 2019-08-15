@@ -51,7 +51,7 @@ class CollectIOstats(Thread):
                 if jobstat_out.strip():
                     self.jobstat_Q.put(jobstat_out)
                     # Clear JobStats logs immediately to free space
-                    self.__clearJobStats(serverParam)
+                    ##-- self.__clearJobStats(serverParam)
 
                 # Set time interval for Collecting IO stats
                 waitInterval = self.config.getJobstatsInterval()
@@ -105,18 +105,17 @@ class PublishIOstats(Thread):
         while not self.exit_flag.is_set():
             if not self.jobstat_Q.empty():
                 jobstat_msg = self.jobstat_Q.get()
-                print jobstat_msg
                 timestamp = time.time()
-                message_body = {'server' : self.hostname,
-                                'timestamp' : timestamp,
-                                'output': jobstat_msg}
+                message_body = {"server" : self.hostname,
+                                "timestamp" : timestamp,
+                                "output": jobstat_msg}
 
                 # Convert Message body dictionary to JSON format
                 message_json = json.dumps(message_body)
 
                 # Send the message to Server
                 try:
-                    self.producer.send(jobstat_msg)
+                    self.producer.send(message_json)
 
                 except CommunicationExp as commExp:
                     print commExp.getMessage()
@@ -180,6 +179,8 @@ class IO_Collector:
             self.pubJstat_Thr = PublishIOstats(jobstat_Q)
             self.pubJstat_Thr.start()
 
+            #print "\nProvenance FS agent has been restarted."
+
             # Keep the main thread running to catch signals
             while True:
                 time.sleep(0.5)
@@ -187,7 +188,7 @@ class IO_Collector:
                     raise MonitoringExitExp
 
         except MonitoringExitExp:
-            print ("\nProvenance agent is shutting down..."),
+            print ("\nProvenance FS agent is shutting down..."),
 
         except ConfigReadExcetion as confExp:
             print confExp.getMessage()
