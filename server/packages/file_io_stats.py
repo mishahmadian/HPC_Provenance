@@ -70,7 +70,8 @@ class IOStatsListener(Process):
 
     #
     # Convert/Map received data from MDS servers into a list of "MDSDataObj" data type
-    def __ioStats_mds_decode(self, data):
+    @staticmethod
+    def __ioStats_mds_decode(data):
         # Create a List of MDSDataObj
         mdsObjLst = []
         timestamp = data["timestamp"]
@@ -114,7 +115,8 @@ class IOStatsListener(Process):
 
     #
     # Convert/Map received data from MDS servers into "OSSDataObj" data type
-    def __ioStats_oss_decode(self, data):
+    @staticmethod
+    def __ioStats_oss_decode(data):
         # Create a List of OSSDataObj
         ossObjLst = []
         timestamp = data["timestamp"]
