@@ -3,7 +3,7 @@
     The main package contains essential classes for collecting I/O statistics from file system.
     this package only supports LUSTRE fle system at this moment and supports following functions:
 
-        1. Receiveing IO stats from Luster servers which are collected by Provenance_agent services.
+        1. Receiving IO stats from Luster servers which are collected by Provenance_agent services.
         2. Collecting Changelog data from a Lustre client
             - We assume the Provenance server has already mounted a lustre client
         3. Organizing collected data and placing them in related Queues for later process (Data Aggregation)
@@ -19,7 +19,7 @@ import json
 import os
 #
 # This Class defines a new process which listens to the incomming port and collects
-# I/O statitistics that are sent from File system (Lustre) agents and put them
+# I/O statistics that are sent from File system (Lustre) agents and put them
 # into a queue (fsIOstat_Q)
 #
 class IOStatsListener(Process):
@@ -27,7 +27,7 @@ class IOStatsListener(Process):
         Process.__init__(self)
         self.fsIOstat_Q = fsIOstat_Q
         self.config = ServerConfig()
-        #print(self._parent_pid)
+        # print(self._parent_pid)
 
     # Implement Process.run()
     def run(self):
@@ -48,18 +48,18 @@ class IOStatsListener(Process):
     # agents on jobStat queue
     def ioStats_receiver(self, ch, method, properties, body):
         io_stat_map = json.loads(body.decode())
-        # Check wheather the IO stat data comes from MDS or OSS.
+        # Check whether the IO stat data comes from MDS or OSS.
         # Then choose the proper function
         if io_stat_map["server"] in self.config.getMDS_hosts():
             # Then data should be processed for MDS
-            mdsStatObjLst = self.ioStats_mds_decode(io_stat_map)
+            mdsStatObjLst = self.__ioStats_mds_decode(io_stat_map)
             # Put mdsStatObjLst items into the fsIOstat_Q
             for mdsStatObj in mdsStatObjLst:
                 self.fsIOstat_Q.put(mdsStatObj)
 
         elif io_stat_map["server"] in self.config.getOSS_hosts():
             # Parse the OSS IO stats
-            ossStatObjLst = self.ioStats_oss_decode(io_stat_map)
+            ossStatObjLst = self.__ioStats_oss_decode(io_stat_map)
             # Put ossStatObjs into fsIOstat_Q
             for ossStatObj in ossStatObjLst:
                 self.fsIOstat_Q.put(ossStatObj)
@@ -70,7 +70,7 @@ class IOStatsListener(Process):
 
     #
     # Convert/Map received data from MDS servers into a list of "MDSDataObj" data type
-    def ioStats_mds_decode(self, data):
+    def __ioStats_mds_decode(self, data):
         # Create a List of MDSDataObj
         mdsObjLst = []
         timestamp = data["timestamp"]
@@ -114,7 +114,7 @@ class IOStatsListener(Process):
 
     #
     # Convert/Map received data from MDS servers into "OSSDataObj" data type
-    def ioStats_oss_decode(self, data):
+    def __ioStats_oss_decode(self, data):
         # Create a List of OSSDataObj
         ossObjLst = []
         timestamp = data["timestamp"]

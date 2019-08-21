@@ -3,7 +3,7 @@
     The main  module which collects the I/O statistics from lustre
     Servers such as MDS(s) and OSS(s). This module spawn three Threads:
 
-        1. CollectIOStats: Collecting the I/O statisitcs from lustre within
+        1. CollectIOStats: Collecting the I/O statistics from lustre within
            the specified time intervals and store it in a Queue
 
         2. Pick collected I/O stats from the Queue and publish (send) them

@@ -3,12 +3,12 @@
     The main module runs on the Provenance Server machine. This module
     executes of several concurrent tasks:
 
-        1. Receiveing I/O statistic data from Provenance agent on Lustre servers
+        1. Receiving I/O statistic data from Provenance agent on Lustre servers
         2. Collecting Lustre Changelog data from the client side
         3. Aggregate the data from 1 & 2 in a meaningful way
         4. Store data on Database
 
- Misha ahmadian (misha.ahmadian@ttu.edu)
+ Misha Ahmadian (misha.ahmadian@ttu.edu)
 """
 from communication import CommunicationExp
 from file_io_stats import IOStatsListener
@@ -16,7 +16,6 @@ from config import ConfigReadExcetion
 from time import sleep, ctime
 from queue import Queue
 import signal
-import sys
 
 #
 # The main class which is executed by the main Daemon process
@@ -72,6 +71,7 @@ class Main_Interface:
 #
 class ProvenanceExitExp(Exception):
     pass
+
 
 #
 # Main
