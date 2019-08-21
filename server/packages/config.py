@@ -35,7 +35,8 @@ class ServerConfig:
     def __validateConfig(self):
         config = {'lustre' : ['mds_hosts', 'oss_hosts', 'fsnames', 'interval'],
                   'rabbitmq' : ['server', 'username', 'password'],
-                  'io_listener' : ['exchange', 'queue']}
+                  'io_listener' : ['exchange', 'queue'],
+                  'aggregator' : ['interval']}
         # Iterate over the Sections in config file
         for section in config.keys():
             if not self.__parser.has_section(section):
@@ -78,90 +79,114 @@ class ServerConfig:
     # Get a list of Lustre fsname(s) defined in Config file
     #   Return: List
     def getFsnames(self):
+        fsnames = None
         if self.__loadConfigFile() or not hasattr(self, 'fsnames'):
-            self.fsnames = [fsname.strip() for fsname in self.__parser.get('lustre', 'fsnames').split(',')]
-        return self.fsnames
+            fsnames = [fsname.strip() for fsname in self.__parser.get('lustre', 'fsnames').split(',')]
+        return fsnames
 
     # Get a list of MDS host names defined in Config file
     #   Return: List
     def getMDS_hosts(self):
+        MDShosts = None
         if self.__loadConfigFile() or not hasattr(self, 'MDShosts'):
-            self.MDShosts = [fsname.strip() for fsname in self.__parser.get('lustre', 'mds_hosts').split(',')]
-        return self.MDShosts
+            MDShosts = [fsname.strip() for fsname in self.__parser.get('lustre', 'mds_hosts').split(',')]
+        return MDShosts
 
     # Get a list of OSS host names defined in Config file
     #   Return: List
     def getOSS_hosts(self):
+        OSSHosts = None
         if self.__loadConfigFile() or not hasattr(self, 'OSSHosts'):
-            self.OSSHosts = [fsname.strip() for fsname in self.__parser.get('lustre', 'oss_hosts').split(',')]
-        return self.OSSHosts
+            OSSHosts = [fsname.strip() for fsname in self.__parser.get('lustre', 'oss_hosts').split(',')]
+        return OSSHosts
 
     # Get the interval between jobstat collecting process
     # Return: Float
     def getJobstatsInterval(self):
+        jstatsInt = None
         if self.__loadConfigFile() or not hasattr(self, 'jstatsInt'):
-            self.jstatsInt = self.__parser.get('lustre', 'interval')
-            if not self.jstatsInt.isdigit():
+            jstatsInt = self.__parser.get('lustre', 'interval')
+            if not jstatsInt.isdigit():
                 raise ConfigReadExcetion("The 'interval' parameter under [lustre] section must be numeric")
-        return float(self.jstatsInt)
+        return float(jstatsInt)
 
     # Get the interval between jobstat collecting process
     # Return: String
     def getMaxJobstatAge(self):
+        jstatsAge = None
         if self.__loadConfigFile() or not hasattr(self, 'jstatsAge'):
-            self.jstatsAge = self.__parser.get('lustre', 'max_age')
-            if not self.jstatsAge.isdigit():
+            jstatsAge = self.__parser.get('lustre', 'max_age')
+            if not jstatsAge.isdigit():
                 raise ConfigReadExcetion("The 'max_age' parameter under [lustre] section must be numeric")
-        return self.jstatsAge
+        return jstatsAge
 
     # Get the name of the server that RabbitMQ-Server is Running
     # Return: String
     def getServer(self):
+        serverName = None
         if self.__loadConfigFile() or not hasattr(self, 'serverName'):
-            self.serverName = self.__parser.get('rabbitmq', 'server')
-        return self.serverName
+            serverName = self.__parser.get('rabbitmq', 'server')
+        return serverName
 
     # Get the name of the port number of the RabbitMQ-Server
     # Return: String
     def getPort(self):
+        serverPort = None
         if self.__loadConfigFile() or not hasattr(self, 'serverPort'):
-            self.serverPort = self.__parser.get('rabbitmq', 'port')
-        return self.serverPort
+            serverPort = self.__parser.get('rabbitmq', 'port')
+            if not serverPort.isdigit():
+                raise ConfigReadExcetion("The 'port' parameter under [rabbitmq] section must be numeric")
+        return serverPort
 
     # Get the username of RabbitMQ-Server
     # Return: String
     def getUsername(self):
+        serverUsername = None
         if self.__loadConfigFile() or not hasattr(self, 'serverUsername'):
-            self.serverUsername = self.__parser.get('rabbitmq', 'username')
-        return self.serverUsername
+            serverUsername = self.__parser.get('rabbitmq', 'username')
+        return serverUsername
 
     # Get the password of RabbitMQ-Server
     # Return: String
     def getPassword(self):
+        serverPassword = None
         if self.__loadConfigFile() or not hasattr(self, 'serverPassword'):
-            self.serverPassword = self.__parser.get('rabbitmq', 'password')
-        return self.serverPassword
+            serverPassword = self.__parser.get('rabbitmq', 'password')
+        return serverPassword
 
     # Get the Vhost of the RabbitMQ-Server which handles the Lustre monitoring
     # Return: String
     def getVhost(self):
+        virtualHost = None
         if self.__loadConfigFile() or not hasattr(self, 'virtualHost'):
-            self.virtualHost = self.__parser.get('rabbitmq', 'vhost')
-        return self.virtualHost
+            virtualHost = self.__parser.get('rabbitmq', 'vhost')
+        return virtualHost
 
     # Get the name of the Queue that io_listener uses
     # Return: String
     def getIOListener_Queue(self):
+        IOLisnQueue = None
         if self.__loadConfigFile() or not hasattr(self, 'IOLisnQueue'):
-            self.IOLisnQueue = self.__parser.get('io_listener', 'queue')
-        return self.IOLisnQueue
+            IOLisnQueue = self.__parser.get('io_listener', 'queue')
+        return IOLisnQueue
 
     # Get the name of the Exchange that io_listener uses
     # Return: String
     def getIOListener_Exch(self):
+        IOLisnExchange = None
         if self.__loadConfigFile() or not hasattr(self, 'IOLisnExchange'):
-            self.IOLisnExchange = self.__parser.get('io_listener', 'exchange')
-        return self.IOLisnExchange
+            IOLisnExchange = self.__parser.get('io_listener', 'exchange')
+        return IOLisnExchange
+
+    # Get the interval between jobstat collecting process
+    # Return: Float
+    def getAggrIntv(self):
+        aggrIntv = None
+        if self.__loadConfigFile() or not hasattr(self, 'jstatsInt'):
+            aggrIntv = self.__parser.get('aggregator', 'interval')
+            if not aggrIntv.isdigit():
+                raise ConfigReadExcetion("The 'interval' parameter under [aggregator] section must be numeric")
+        return float(aggrIntv)
 
 
 #

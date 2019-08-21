@@ -28,7 +28,7 @@ import json
 import time
 
 #
-#  Defined a Class for collecting Jobstats on MDS(s) and OSS(s)
+#  Defined a Class for collecting JobStats on MDS(s) and OSS(s)
 #
 class CollectIOstats(Thread):
     def __init__(self, jobstat_Q):
@@ -37,7 +37,7 @@ class CollectIOstats(Thread):
         self.config = AgentConfig()
         self.jobstat_Q = jobstat_Q
         self.hostname = socket.gethostname()
-        # Set Jobstat cleanup interval
+        # Set JobStat cleanup interval
         self.__setMaxAutoCleanup(self.config.getMaxJobstatAge())
 
     # Implement Thread.run()
@@ -45,9 +45,9 @@ class CollectIOstats(Thread):
         while not self.exit_flag.is_set():
             try:
                 serverParam = self.__getServerParam()
-                # Collecting Jobstats from Lustre
+                # Collecting JobStats from Lustre
                 jobstat_out = self.__getJobStats(serverParam)
-                # Put the jobstat output in thread safe Queue
+                # Put the jobStat output in thread safe Queue
                 if jobstat_out.strip():
                     self.jobstat_Q.put(jobstat_out)
                     # Clear JobStats logs immediately to free space

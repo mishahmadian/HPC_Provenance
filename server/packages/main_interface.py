@@ -10,11 +10,12 @@
 
  Misha Ahmadian (misha.ahmadian@ttu.edu)
 """
+from file_io_stats import IOStatsListener, IOStatsException
+from aggregator import Aggregator, AggregatorException
 from communication import CommunicationExp
-from file_io_stats import IOStatsListener
 from config import ConfigReadExcetion
+from multiprocessing import Queue
 from time import sleep, ctime
-from queue import Queue
 import signal
 
 #
@@ -23,6 +24,7 @@ import signal
 class Main_Interface:
     def __init__(self):
         self.IOStatsLsn_Proc = None
+        self.aggregator_Proc = None
 
         # Register signal handler
         signal.signal(signal.SIGINT, self.server_exit)
@@ -37,11 +39,16 @@ class Main_Interface:
         try:
             fsIOstat_Q = Queue()
 
-            # IO Stats Listener Thread
+            # IO Stats Listener Process
             self.IOStatsLsn_Proc = IOStatsListener(fsIOstat_Q)
             self.IOStatsLsn_Proc.start()
 
+            # Aggregator Process
+            self.aggregator_Proc = Aggregator(fsIOstat_Q)
+            self.aggregator_Proc.start()
+
             self.IOStatsLsn_Proc.join()
+            self.aggregator_Proc.join()
 
             while True:
                 sleep(0.5)
@@ -57,12 +64,19 @@ class Main_Interface:
         except CommunicationExp as commExp:
             print(commExp.getMessage())
 
+        except IOStatsException as iostExp:
+            print(iostExp.getMessage())
+
+        except AggregatorException as aggrExp:
+            print(aggrExp.getMessage())
+
         except Exception as exp:
             print(str(exp))
 
         finally:
-            if not self.IOStatsLsn_Proc == None:
+            if not self.IOStatsLsn_Proc is None:
                 self.IOStatsLsn_Proc.terminate()
+                self.aggregator_Proc.event_flag.set()
 
             print("Done!")
 

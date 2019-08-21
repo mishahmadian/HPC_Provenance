@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-    The main package contains essential classes for collecting I/O statistics from file system.
+    The main module which contains essential classes for collecting I/O statistics from file system.
     this package only supports LUSTRE fle system at this moment and supports following functions:
 
         1. Receiving IO stats from Luster servers which are collected by Provenance_agent services.
@@ -27,6 +27,8 @@ class IOStatsListener(Process):
         Process.__init__(self)
         self.fsIOstat_Q = fsIOstat_Q
         self.config = ServerConfig()
+        self.__MDS_hosts = self.config.getMDS_hosts()
+        self.__OSS_hosts = self.config.getOSS_hosts()
         # print(self._parent_pid)
 
     # Implement Process.run()
@@ -50,14 +52,14 @@ class IOStatsListener(Process):
         io_stat_map = json.loads(body.decode())
         # Check whether the IO stat data comes from MDS or OSS.
         # Then choose the proper function
-        if io_stat_map["server"] in self.config.getMDS_hosts():
+        if io_stat_map["server"] in self.__MDS_hosts:
             # Then data should be processed for MDS
             mdsStatObjLst = self.__ioStats_mds_decode(io_stat_map)
             # Put mdsStatObjLst items into the fsIOstat_Q
             for mdsStatObj in mdsStatObjLst:
                 self.fsIOstat_Q.put(mdsStatObj)
 
-        elif io_stat_map["server"] in self.config.getOSS_hosts():
+        elif io_stat_map["server"] in self.__OSS_hosts:
             # Parse the OSS IO stats
             ossStatObjLst = self.__ioStats_oss_decode(io_stat_map)
             # Put ossStatObjs into fsIOstat_Q
@@ -65,16 +67,17 @@ class IOStatsListener(Process):
                 self.fsIOstat_Q.put(ossStatObj)
         else:
             # Otherwise the data should be processed for OSS
-            raise IOStatsExcetion("The destination of incoming data does not match "
+            raise IOStatsException("The Source of incoming data does not match "
                                     +" with MDS/OSS hosts in 'server.conf'")
 
     #
     # Convert/Map received data from MDS servers into a list of "MDSDataObj" data type
     @staticmethod
-    def __ioStats_mds_decode(data):
+    def __ioStats_mds_decode(self, data):
         # Create a List of MDSDataObj
         mdsObjLst = []
         timestamp = data["timestamp"]
+        serverHost = data["server"]
         # Filter out a group of received JobStats of different jobs
         jobstatLst = data["output"].split("job_stats:")
         # drop the first element because its always empty
@@ -85,6 +88,8 @@ class IOStatsListener(Process):
             mdsObj = MDSDataObj()
             # Timestamp recorded on agent side
             mdsObj.timestamp = timestamp
+            # The host name of the server
+            mdsObj.mds_host = serverHost
             # Parse the Jobstat output line by line
             for line in data["output"].splitlines():
                 # skip empty lines
@@ -116,10 +121,11 @@ class IOStatsListener(Process):
     #
     # Convert/Map received data from MDS servers into "OSSDataObj" data type
     @staticmethod
-    def __ioStats_oss_decode(data):
+    def __ioStats_oss_decode(self, data):
         # Create a List of OSSDataObj
         ossObjLst = []
         timestamp = data["timestamp"]
+        serverHost = data["server"]
         # Filter out a group of received JobStats of different jobs
         jobstatLst = data["output"].split("job_stats:")
         # drop the first element because its always empty
@@ -130,6 +136,8 @@ class IOStatsListener(Process):
             ossObj = OSSDataObj()
             # Timestamp recorded on agent side
             ossObj.timestamp = timestamp
+            # The host name of the server
+            ossObj.oss_host = serverHost
             # Parse the Jobstat output line by line
             for line in data["output"].splitlines():
                 # skip empty lines
@@ -147,11 +155,13 @@ class IOStatsListener(Process):
                 # Parse read_bytes and write_bytes in a different way
                 elif "_bytes" in attr:
                     # a set of related parameters for Read and Write operations
+                    # attr_ext holds the position of MIN/MAX/SUM values in the  for each Read/Write
+                    # operation in the JobStats output from OSS (The first item is read/write itself)
                     attr_ext = {"" : 2, "_min" :4 , "_max" : 5, "_sum" : 6}
                     for ext in attr_ext:
                         inx = attr_ext[ext]
                         objattr = attr + ext # define the name of the attr in OSSDataObj
-                        delim2 = ',' if  inx != 6 else '}' # Splitting the jobstat output is weird!
+                        delim2 = ',' if  inx != 6 else '}' # Splitting the JobStat output is weird!
                         # Set the corresponding attribute in the OSSDataObj object
                         value = line.split(':')[inx].split(delim2)[0].strip()
                         setattr(ossObj, objattr, value)
@@ -166,7 +176,7 @@ class IOStatsListener(Process):
 
             # Put the ossObj into a list
             ossObjLst.append(ossObj)
-        # Retrun the jobstat output in form of OSSDataObj data type
+        # Rerun the JobStat output in form of OSSDataObj data type
         return ossObjLst
 
 #
@@ -175,6 +185,7 @@ class IOStatsListener(Process):
 #
 class MDSDataObj:
     def __init__(self):
+        self.mds_host = None
         self.timestamp = 0
         self.jobid = None
         self.cluster = None
@@ -199,6 +210,7 @@ class MDSDataObj:
 #
 class OSSDataObj:
     def __init__(self):
+        self.oss_host = None
         self.timestamp = 0
         self.jobid = None
         self.cluster = None
@@ -216,7 +228,7 @@ class OSSDataObj:
         self.setattr = 0
         self.punch = 0
         self.destroy = 0
-        self.create
+        self.create = 0
 
 #
 # This Class defines a new process to collect Lustre changelog data from
@@ -232,11 +244,11 @@ class ChangeLogCollector(Process):
     def run(self):
         pass
 #
-# In case of error the follwoing exception can be raised
+# In case of error the following exception can be raised
 #
-class IOStatsExcetion(Exception):
+class IOStatsException(Exception):
     def __init__(self, message):
-        super(IOStatsExcetion, self).__init__(message)
+        super(IOStatsException, self).__init__(message)
         self.message = "\n [Error] _IO-STATS_: " + message + "\n"
 
     def getMessage(self):
