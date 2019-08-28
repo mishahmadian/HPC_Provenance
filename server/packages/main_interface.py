@@ -52,7 +52,7 @@ class Main_Interface:
 
             while True:
                 sleep(0.5)
-                if not self.IOStatsLsn_Proc.is_alive():
+                if not self.IOStatsLsn_Proc.is_alive() or not self.aggregator_Proc.is_alive():
                     raise ProvenanceExitExp
 
         except ProvenanceExitExp:
@@ -85,7 +85,6 @@ class Main_Interface:
 #
 class ProvenanceExitExp(Exception):
     pass
-
 
 #
 # Main

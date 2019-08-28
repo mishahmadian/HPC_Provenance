@@ -38,7 +38,8 @@ class CollectIOstats(Thread):
         self.jobstat_Q = jobstat_Q
         self.hostname = socket.gethostname()
         # Set JobStat cleanup interval
-        self.__setMaxAutoCleanup(self.config.getMaxJobstatAge())
+        if self.hostname in self.config.getMDS_hosts():
+            self.__setMaxAutoCleanup(self.config.getMaxJobstatAge())
 
     # Implement Thread.run()
     def run(self):
@@ -58,7 +59,7 @@ class CollectIOstats(Thread):
                 self.exit_flag.wait(waitInterval)
 
             except ConfigReadExcetion as confExp:
-                print confExp.getMessage()
+                print(confExp.getMessage())
                 self.exit_flag.set()
 
     # Load the Agent Settings from Agent.conf file
@@ -118,7 +119,7 @@ class PublishIOstats(Thread):
                     self.producer.send(message_json)
 
                 except CommunicationExp as commExp:
-                    print commExp.getMessage()
+                    print(commExp.getMessage())
                     self.exit_flag.set()
 
             #
@@ -136,7 +137,7 @@ class PublishIOstats(Thread):
             response = ntp.request(ntp_server)
             return response.tx_time
         except NTPException as ntpExp:
-            print str(ntpExp)
+            print(str(ntpExp))
             self.exit_flag.set()
 
 
@@ -188,16 +189,16 @@ class IO_Collector:
                     raise MonitoringExitExp
 
         except MonitoringExitExp:
-            print ("\nProvenance FS agent is shutting down..."),
+            print("\nProvenance FS agent is shutting down..."),
 
         except ConfigReadExcetion as confExp:
-            print confExp.getMessage()
+            print(confExp.getMessage())
 
         except CommunicationExp as commExp:
-            print commExp.getMessage()
+            print(commExp.getMessage())
 
         except Exception as exp:
-            print str(exp)
+            print(str(exp))
 
         finally:
                 try:
@@ -208,7 +209,7 @@ class IO_Collector:
                         self.pubJstat_Thr.exit_flag.set()
                         self.pubJstat_Thr.join()
 
-                    print "Done!"
+                    print("Done!")
 
                 except:
                     pass

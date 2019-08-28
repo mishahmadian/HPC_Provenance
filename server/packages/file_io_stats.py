@@ -13,10 +13,7 @@
 from communication import ServerConnection, CommunicationExp
 from config import ServerConfig, ConfigReadExcetion
 from multiprocessing import Process
-from queue import Queue
-import signal
 import json
-import os
 #
 # This Class defines a new process which listens to the incomming port and collects
 # I/O statistics that are sent from File system (Lustre) agents and put them
@@ -72,7 +69,7 @@ class IOStatsListener(Process):
 
     #
     # Convert/Map received data from MDS servers into a list of "MDSDataObj" data type
-    @staticmethod
+    #@staticmethod
     def __ioStats_mds_decode(self, data):
         # Create a List of MDSDataObj
         mdsObjLst = []
@@ -120,7 +117,7 @@ class IOStatsListener(Process):
 
     #
     # Convert/Map received data from MDS servers into "OSSDataObj" data type
-    @staticmethod
+    #@staticmethod
     def __ioStats_oss_decode(self, data):
         # Create a List of OSSDataObj
         ossObjLst = []

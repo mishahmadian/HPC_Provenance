@@ -8,6 +8,7 @@
 from config import ServerConfig, ConfigReadExcetion
 from file_io_stats import MDSDataObj, OSSDataObj
 from multiprocessing import Process, Event
+from threading import Timer, Lock
 
 class Aggregator(Process):
     def __init__(self, fsIOstat_Q):
@@ -19,18 +20,19 @@ class Aggregator(Process):
     # Implement Process.run()
     def run(self):
         while not self.event_flag.is_set():
+            print("==========  ENTER  ============")
             while not self.fsIOstat_Q.empty():
                 fsIOObj = self.fsIOstat_Q.get()
                 # MDS or OSS data?
                 if isinstance(fsIOObj, MDSDataObj):
                     print("========== MDS: " + fsIOObj.mds_host + " ============")
-                    for attr in MDSDataObj.__dict__:
-                        print(attr + " --> " + getattr(fsIOObj, attr))
+                    for attr in [atr for atr in dir(fsIOObj) if not atr.startswith('__')]:
+                        print(attr + " --> " + str(getattr(fsIOObj, attr)))
 
                 elif isinstance(fsIOObj, OSSDataObj):
                     print("========== OSS: " + fsIOObj.oss_host + " ============")
-                    for attr in OSSDataObj.__dict__:
-                        print(attr + " --> " + getattr(fsIOObj, attr))
+                    for attr in [atr for atr in dir(fsIOObj) if not atr.startswith('__')]:
+                        print(attr + " --> " + str(getattr(fsIOObj, attr)))
                 else:
                     raise AggregatorException("Wrong 'fsIOObj' instance")
 
@@ -40,7 +42,8 @@ class Aggregator(Process):
 
         # Terminate itself after flag is set
         self.terminate()
-                
+
+
             
 
 
