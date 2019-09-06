@@ -47,7 +47,6 @@ job_stats:
   set_info:        { samples:           0, unit:  reqs }
   quotactl:        { samples:           0, unit:  reqs }
 """
-
 myStr2 = """
     job_stats:
 - job_id:          genius_uge_70
@@ -65,6 +64,8 @@ myStr2 = """
   set_info:        { samples:           0, unit:  reqs }
   quotactl:        { samples:           0, unit:  reqs }
 """
+from threading import Thread, Event, Timer
+import time
 
 def myfilter():
     result = myStr.split("job_stats:")
@@ -88,4 +89,25 @@ def mylist():
                 value = line.split(':')[inx].split(delim2)[0].strip()
                 print(objattr + " = " + value)
 
-mylist()
+timestamp = 0;
+
+class time_read(Thread):
+    def __init__(self):
+        Thread.__init__(self)
+        self.flag = Event()
+
+    def run(self):
+        global timestamp
+        while not self.flag.is_set():
+            timestamp = time.time()
+            self.flag.wait(10)
+
+
+def main():
+    tr = time_read()
+    tr.start()
+
+    while True:
+        print("time is: " + str(timestamp))
+        time.sleep(5)
+main()

@@ -7,19 +7,36 @@
 """
 from config import ServerConfig, ConfigReadExcetion
 from file_io_stats import MDSDataObj, OSSDataObj
-from multiprocessing import Process, Event
-from threading import Timer, Lock
+from multiprocessing import Process, Event, Value, Lock
+from threading import Event as Event_Thr, Thread
+import time
 
 class Aggregator(Process):
+
     def __init__(self, fsIOstat_Q):
         Process.__init__(self)
         self.fsIOstat_Q = fsIOstat_Q
         self.event_flag = Event()
         self.config = ServerConfig()
 
+
     # Implement Process.run()
     def run(self):
+        intv_time = Value('f', 0.0)
+        event_flag = Event_Thr()
+        lock = Lock()
+        def __timer(timer_val, flag, lok):
+            while not flag.is_set():
+                with lok:
+                    timer_val.value = time.time()
+                print(" real time is: " + str(timer_val.value))
+                flag.wait(10)
+
+        timer = Thread(target=__timer, args=(intv_time, event_flag, lock,))
+        timer.start()
+
         while not self.event_flag.is_set():
+            print(" time is: " + str(intv_time.value))
             print("==========  ENTER  ============")
             while not self.fsIOstat_Q.empty():
                 fsIOObj = self.fsIOstat_Q.get()
@@ -41,7 +58,9 @@ class Aggregator(Process):
             self.event_flag.wait(waitIntv)
 
         # Terminate itself after flag is set
+        self.__timer.flag.set()
         self.terminate()
+
 
 
             
