@@ -25,6 +25,7 @@ class Main_Interface:
     def __init__(self):
         self.IOStatsLsn_Proc = None
         self.aggregator_Proc = None
+        self.count = 0
 
         # Register signal handler
         signal.signal(signal.SIGINT, self.server_exit)
@@ -46,9 +47,6 @@ class Main_Interface:
             # Aggregator Process
             self.aggregator_Proc = Aggregator(fsIOstat_Q)
             self.aggregator_Proc.start()
-
-            self.IOStatsLsn_Proc.join()
-            self.aggregator_Proc.join()
 
             while True:
                 sleep(0.5)
@@ -76,7 +74,9 @@ class Main_Interface:
         finally:
             if not self.IOStatsLsn_Proc is None:
                 self.IOStatsLsn_Proc.terminate()
-                self.aggregator_Proc.event_flag.set()
+
+            if not self.aggregator_Proc is None:
+                self.aggregator_Proc.terminate()
 
             print("Done!")
 

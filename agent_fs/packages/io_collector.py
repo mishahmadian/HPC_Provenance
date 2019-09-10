@@ -21,7 +21,6 @@ from threading import Thread, Event
 from ntplib import NTPClient
 from Queue import Queue
 import subprocess
-import sys
 import signal
 import socket
 import json
@@ -202,10 +201,10 @@ class IO_Collector:
 
         finally:
                 try:
-                    if not self.IOStats_Thr == None:
+                    if not self.IOStats_Thr is None:
                         self.IOStats_Thr.exit_flag.set()
                         self.IOStats_Thr.join()
-                    if not self.pubJstat_Thr == None:
+                    if not self.pubJstat_Thr is None:
                         self.pubJstat_Thr.exit_flag.set()
                         self.pubJstat_Thr.join()
 

@@ -7,9 +7,13 @@
 """
 from config import ServerConfig, ConfigReadExcetion
 from file_io_stats import MDSDataObj, OSSDataObj
-from multiprocessing import Process, Event, Value, Lock
 from threading import Event as Event_Thr, Thread
+from multiprocessing import Process, Event
 import time
+
+#------ Global Variable ------
+# Timer Value
+timer_val = 0.0
 
 class Aggregator(Process):
 
@@ -18,26 +22,25 @@ class Aggregator(Process):
         self.fsIOstat_Q = fsIOstat_Q
         self.event_flag = Event()
         self.config = ServerConfig()
+        try:
+            self.__interval = self.config.getAggrIntv()
+            self.__timerIntv = self.config.getAggrTimer()
 
+        except ConfigReadExcetion as confExp:
+            print(confExp.getMessage())
+            self.event_flag.set()
 
     # Implement Process.run()
     def run(self):
-        intv_time = Value('f', 0.0)
-        event_flag = Event_Thr()
-        lock = Lock()
-        def __timer(timer_val, flag, lok):
-            while not flag.is_set():
-                with lok:
-                    timer_val.value = time.time()
-                print(" real time is: " + str(timer_val.value))
-                flag.wait(10)
-
-        timer = Thread(target=__timer, args=(intv_time, event_flag, lock,))
+        #
+        # Create a Timer Thread to be running for this process and change the
+        # "timer_val" value every
+        timer_flag = Event_Thr()
+        timer = Thread(target=self.__timer, args=(timer_flag, self.__timerIntv,))
+        timer.setDaemon(True)
         timer.start()
 
         while not self.event_flag.is_set():
-            print(" time is: " + str(intv_time.value))
-            print("==========  ENTER  ============")
             while not self.fsIOstat_Q.empty():
                 fsIOObj = self.fsIOstat_Q.get()
                 # MDS or OSS data?
@@ -54,16 +57,19 @@ class Aggregator(Process):
                     raise AggregatorException("Wrong 'fsIOObj' instance")
 
             # Interval to wait when queue is empty
-            waitIntv = self.config.getAggrIntv()
-            self.event_flag.wait(waitIntv)
+            self.event_flag.wait(self.__interval)
 
-        # Terminate itself after flag is set
-        self.__timer.flag.set()
-        self.terminate()
+        # Terminate timer after flag is set
+        timer_flag.set()
 
-
-
-            
+    # Timer function to be used in a thread inside this process
+    @staticmethod
+    def __timer(timer_flag, timerIntv):
+        while not timer_flag.is_set():
+            global timer_val
+            timer_val = time.time()
+            print(" real time is: " + str(timer_val))
+            time.sleep(timerIntv)
 
 
 #

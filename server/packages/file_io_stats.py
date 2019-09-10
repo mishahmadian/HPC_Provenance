@@ -4,9 +4,8 @@
     this package only supports LUSTRE fle system at this moment and supports following functions:
 
         1. Receiving IO stats from Luster servers which are collected by Provenance_agent services.
-        2. Collecting Changelog data from a Lustre client
-            - We assume the Provenance server has already mounted a lustre client
-        3. Organizing collected data and placing them in related Queues for later process (Data Aggregation)
+        2. Organizing collected data by mapping them to their corresponding object and then placing
+            them into the related Queues for later process (i.e. Data Aggregation)
 
  Misha ahmadian (misha.ahmadian@ttu.edu)
 """
@@ -15,7 +14,7 @@ from config import ServerConfig, ConfigReadExcetion
 from multiprocessing import Process
 import json
 #
-# This Class defines a new process which listens to the incomming port and collects
+# This Class defines a new process which listens to the incoming port and collects
 # I/O statistics that are sent from File system (Lustre) agents and put them
 # into a queue (fsIOstat_Q)
 #
@@ -24,8 +23,13 @@ class IOStatsListener(Process):
         Process.__init__(self)
         self.fsIOstat_Q = fsIOstat_Q
         self.config = ServerConfig()
-        self.__MDS_hosts = self.config.getMDS_hosts()
-        self.__OSS_hosts = self.config.getOSS_hosts()
+        try:
+            self.__MDS_hosts = self.config.getMDS_hosts()
+            self.__OSS_hosts = self.config.getOSS_hosts()
+
+        except ConfigReadExcetion as confExp:
+            print(confExp.getMessage())
+
         # print(self._parent_pid)
 
     # Implement Process.run()
@@ -51,14 +55,14 @@ class IOStatsListener(Process):
         # Then choose the proper function
         if io_stat_map["server"] in self.__MDS_hosts:
             # Then data should be processed for MDS
-            mdsStatObjLst = self.__ioStats_mds_decode(io_stat_map)
+            mdsStatObjLst = self.__parseIoStats_mds(io_stat_map)
             # Put mdsStatObjLst items into the fsIOstat_Q
             for mdsStatObj in mdsStatObjLst:
                 self.fsIOstat_Q.put(mdsStatObj)
 
         elif io_stat_map["server"] in self.__OSS_hosts:
             # Parse the OSS IO stats
-            ossStatObjLst = self.__ioStats_oss_decode(io_stat_map)
+            ossStatObjLst = self.__parseIoStats_oss(io_stat_map)
             # Put ossStatObjs into fsIOstat_Q
             for ossStatObj in ossStatObjLst:
                 self.fsIOstat_Q.put(ossStatObj)
@@ -70,7 +74,7 @@ class IOStatsListener(Process):
     #
     # Convert/Map received data from MDS servers into a list of "MDSDataObj" data type
     #@staticmethod
-    def __ioStats_mds_decode(self, data):
+    def __parseIoStats_mds(self, data):
         # Create a List of MDSDataObj
         mdsObjLst = []
         timestamp = data["timestamp"]
@@ -118,7 +122,7 @@ class IOStatsListener(Process):
     #
     # Convert/Map received data from MDS servers into "OSSDataObj" data type
     #@staticmethod
-    def __ioStats_oss_decode(self, data):
+    def __parseIoStats_oss(self, data):
         # Create a List of OSSDataObj
         ossObjLst = []
         timestamp = data["timestamp"]
@@ -227,19 +231,6 @@ class OSSDataObj:
         self.destroy = 0
         self.create = 0
 
-#
-# This Class defines a new process to collect Lustre changelog data from
-# Lustre client. The changelog has to be registered on MGS server.
-#
-class ChangeLogCollector(Process):
-    def __init__(self, chLog_Q):
-        Process.__init__(self)
-        self.chLog_Q = chLog_Q
-        self.config = ServerConfig()
-
-    # Implement Process.run()
-    def run(self):
-        pass
 #
 # In case of error the following exception can be raised
 #

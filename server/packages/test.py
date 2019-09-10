@@ -66,6 +66,7 @@ myStr2 = """
 """
 from threading import Thread, Event, Timer
 import time
+import datetime
 
 def myfilter():
     result = myStr.split("job_stats:")
@@ -110,4 +111,19 @@ def main():
     while True:
         print("time is: " + str(timestamp))
         time.sleep(5)
-main()
+
+def date_conv():
+    time_str = "16:04:31.505817780"
+    date_str = "2019.08.28"
+    datetime_str = time_str[:-3] + " " + date_str
+    date_time_obj = datetime.datetime.strptime(datetime_str, '%H:%M:%S.%f %Y.%m.%d')
+    mytimestamp = datetime.datetime.timestamp(date_time_obj)
+
+    print('Date:', date_time_obj.date())
+    print('Time:', date_time_obj.time())
+    print('Date-time:', date_time_obj)
+    print('timestamp:', mytimestamp)
+
+#date_conv()
+print(time.time())
+

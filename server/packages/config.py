@@ -10,7 +10,7 @@
     Misha Ahmadian (misha.ahmadian@ttu.edu)
 """
 
-from configparser import SafeConfigParser
+from configparser import ConfigParser
 import os
 import time
 
@@ -22,7 +22,7 @@ class ServerConfig:
 
     # Private Constructor
     def __init__(self):
-        self.__parser = SafeConfigParser()
+        self.__parser = ConfigParser()
         # Track the config file changes
         self.__cached_stamp = 0
         # Config file name and path
@@ -33,10 +33,11 @@ class ServerConfig:
     # Validate the server.conf to ensure all the mandatorysections and options
     # are defined and correct
     def __validateConfig(self):
-        config = {'lustre' : ['mds_hosts', 'oss_hosts', 'fsnames', 'interval'],
+        config = {'lustre' : ['mds_hosts', 'oss_hosts', 'mdt_targets'],
                   'rabbitmq' : ['server', 'username', 'password'],
                   'io_listener' : ['exchange', 'queue'],
-                  'aggregator' : ['interval']}
+                  'changelogs' : ['interval'],
+                  'aggregator' : ['interval', 'timer_intv']}
         # Iterate over the Sections in config file
         for section in config.keys():
             if not self.__parser.has_section(section):
@@ -78,11 +79,11 @@ class ServerConfig:
 
     # Get a list of Lustre fsname(s) defined in Config file
     #   Return: List
-    def getFsnames(self):
-        fsnames = None
-        if self.__loadConfigFile() or not hasattr(self, 'fsnames'):
-            fsnames = [fsname.strip() for fsname in self.__parser.get('lustre', 'fsnames').split(',')]
-        return fsnames
+    def getMdtTargets(self):
+        mdtTargets = None
+        if self.__loadConfigFile() or not hasattr(self, 'mdtTargets'):
+            mdtTargets = [mdtTarget.strip() for mdtTarget in self.__parser.get('lustre', 'mdt_targets').split(',')]
+        return mdtTargets
 
     # Get a list of MDS host names defined in Config file
     #   Return: List
@@ -99,26 +100,6 @@ class ServerConfig:
         if self.__loadConfigFile() or not hasattr(self, 'OSSHosts'):
             OSSHosts = [fsname.strip() for fsname in self.__parser.get('lustre', 'oss_hosts').split(',')]
         return OSSHosts
-
-    # Get the interval between jobstat collecting process
-    # Return: Float
-    def getJobstatsInterval(self):
-        jstatsInt = None
-        if self.__loadConfigFile() or not hasattr(self, 'jstatsInt'):
-            jstatsInt = self.__parser.get('lustre', 'interval')
-            if not jstatsInt.isdigit():
-                raise ConfigReadExcetion("The 'interval' parameter under [lustre] section must be numeric")
-        return float(jstatsInt)
-
-    # Get the interval between jobstat collecting process
-    # Return: String
-    def getMaxJobstatAge(self):
-        jstatsAge = None
-        if self.__loadConfigFile() or not hasattr(self, 'jstatsAge'):
-            jstatsAge = self.__parser.get('lustre', 'max_age')
-            if not jstatsAge.isdigit():
-                raise ConfigReadExcetion("The 'max_age' parameter under [lustre] section must be numeric")
-        return jstatsAge
 
     # Get the name of the server that RabbitMQ-Server is Running
     # Return: String
@@ -178,16 +159,35 @@ class ServerConfig:
             IOLisnExchange = self.__parser.get('io_listener', 'exchange')
         return IOLisnExchange
 
-    # Get the interval between jobstat collecting process
+    # Get the interval between collecting Lustre changelogs
+    # Return: Float
+    def getChLogsIntv(self):
+        chlogIntv = None
+        if self.__loadConfigFile() or not hasattr(self, 'chlogIntv'):
+            chlogIntv = self.__parser.get('changelogs', 'interval')
+            if not chlogIntv.isdigit():
+                raise ConfigReadExcetion("The 'interval' parameter under [changelogs] section must be numeric")
+        return float(chlogIntv)
+
+    # Get the interval between aggregating the received data in the queue
     # Return: Float
     def getAggrIntv(self):
         aggrIntv = None
-        if self.__loadConfigFile() or not hasattr(self, 'jstatsInt'):
+        if self.__loadConfigFile() or not hasattr(self, 'aggrIntv'):
             aggrIntv = self.__parser.get('aggregator', 'interval')
             if not aggrIntv.isdigit():
                 raise ConfigReadExcetion("The 'interval' parameter under [aggregator] section must be numeric")
         return float(aggrIntv)
 
+    # Get the Aggregator timer Interval
+    # Return: Float
+    def getAggrTimer(self):
+        aggrtimer = None
+        if self.__loadConfigFile() or not hasattr(self, 'aggrtimer'):
+            aggrtimer = self.__parser.get('aggregator', 'timer_intv')
+            if not aggrtimer.isdigit():
+                raise ConfigReadExcetion("The 'timer_intv' parameter under [aggregator] section must be numeric")
+        return float(aggrtimer)
 
 #
 # In any case of Error, Exception, or Mistake ConfigReadExcetion will be raised
