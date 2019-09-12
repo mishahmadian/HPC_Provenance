@@ -6,9 +6,9 @@
  Misha ahmadian (misha.ahmadian@ttu.edu)
 """
 from config import ServerConfig, ConfigReadExcetion
+from multiprocessing import Process, Event, Manager
 from file_io_stats import MDSDataObj, OSSDataObj
 from threading import Event as Event_Thr, Thread
-from multiprocessing import Process, Event
 import time
 
 #------ Global Variable ------
@@ -17,10 +17,13 @@ timer_val = 0.0
 
 class Aggregator(Process):
 
-    def __init__(self, fsIOstat_Q):
+    def __init__(self, MSDStat_Q, OSSStat_Q, fileOP_Q):
         Process.__init__(self)
-        self.fsIOstat_Q = fsIOstat_Q
+        self.MSDStat_Q = MSDStat_Q
+        self.OSSStat_Q = OSSStat_Q
+        self.fileOP_Q = fileOP_Q
         self.event_flag = Event()
+        self.timesUp = Event()
         self.config = ServerConfig()
         try:
             self.__interval = self.config.getAggrIntv()
@@ -38,11 +41,14 @@ class Aggregator(Process):
         timer_flag = Event_Thr()
         timer = Thread(target=self.__timer, args=(timer_flag, self.__timerIntv,))
         timer.setDaemon(True)
-        timer.start()
+        #==timer.start()
 
         while not self.event_flag.is_set():
-            while not self.fsIOstat_Q.empty():
-                fsIOObj = self.fsIOstat_Q.get()
+            # Create a shard Dictionary object which allows three process to update their values
+            jobFSTbl = Manager().dict()
+
+            while not self.filesystem_Q.empty():
+                fsIOObj = self.filesystem_Q.get()
                 # MDS or OSS data?
                 if isinstance(fsIOObj, MDSDataObj):
                     print("========== MDS: " + fsIOObj.mds_host + " ============")
@@ -61,6 +67,8 @@ class Aggregator(Process):
 
         # Terminate timer after flag is set
         timer_flag.set()
+
+
 
     # Timer function to be used in a thread inside this process
     @staticmethod

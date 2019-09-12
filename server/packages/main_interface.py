@@ -38,14 +38,16 @@ class Main_Interface:
     # Main Function
     def run_server(self):
         try:
-            fsIOstat_Q = Queue()
+            MSDStat_Q = Queue()
+            OSSStat_Q = Queue()
+            fileOP_Q = Queue
 
             # IO Stats Listener Process
-            self.IOStatsLsn_Proc = IOStatsListener(fsIOstat_Q)
+            self.IOStatsLsn_Proc = IOStatsListener(MSDStat_Q, OSSStat_Q)
             self.IOStatsLsn_Proc.start()
 
             # Aggregator Process
-            self.aggregator_Proc = Aggregator(fsIOstat_Q)
+            self.aggregator_Proc = Aggregator(MSDStat_Q, OSSStat_Q, fileOP_Q)
             self.aggregator_Proc.start()
 
             while True:

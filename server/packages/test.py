@@ -125,5 +125,55 @@ def date_conv():
     print('timestamp:', mytimestamp)
 
 #date_conv()
-print(time.time())
+from multiprocessing import Process, Event, Manager
+import time
 
+class ProcTest(Process):
+    def __init__(self):
+        Process.__init__(self)
+        self.event_flag = Event()
+        self.timesUp = Event()
+
+    def run(self):
+        while not self.event_flag.is_set():
+            procList = []
+            myDict = Manager().dict()
+            myDict[123] = 1
+            self.timesUp.clear()
+
+            procList.append(Process(target=self.__test1, args=(myDict,)))
+            procList.append(Process(target=self.__test2, args=(myDict,)))
+            procList.append(Process(target=self.__test3, args=(myDict,)))
+
+            for proc in procList:
+                proc.start()
+
+            self.event_flag.wait(5)
+            self.timesUp.set()
+
+            for proc in procList:
+                proc.join()
+            print("======= " + str(myDict[123]))
+
+    def __test1(self, myDict):
+        while not self.timesUp.is_set():
+            myDict[123] += 1
+            print("I'm test 1 @ " + str(myDict[123]))
+            self.timesUp.wait(1)
+
+    def __test2(self, myDict):
+        while not self.timesUp.is_set():
+            myDict[123] += 1
+            print("I'm test 2 @ " + str(myDict[123]))
+            self.timesUp.wait(4)
+
+    def __test3(self, myDict):
+        while not self.timesUp.is_set():
+            myDict[123] += 1
+            print("I'm test 3 @ " + str(myDict[123]))
+            self.timesUp.wait(1)
+
+
+mainProc = ProcTest()
+mainProc.start()
+mainProc.join()

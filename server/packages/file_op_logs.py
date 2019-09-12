@@ -27,6 +27,7 @@ class ChangeLogCollector(Process):
         try:
             self.__mdtTargets = self.config.getMdtTargets()
             self.__interval = self.config.getChLogsIntv()
+            self.__chLogUser = self.config.getChLogsUser()
 
         except ConfigReadExcetion as confExp:
             print(confExp.getMessage())
@@ -36,7 +37,12 @@ class ChangeLogCollector(Process):
         while not self.event_flag.is_set():
             for mdtTarget in self.__mdtTargets:
                 chLogs_out = self.__collectChangeLogs(mdtTarget)
-                fileOpObj_Lst = self.__parseChaneLogs(chLogs_out, mdtTarget)
+                # Parse ChangeLogs
+                fileOpObj_Lst, endRecId = self.__parseChaneLogs(chLogs_out, mdtTarget)
+                # Put the list of File Operations info in the main Queue which is shared with Aggregator
+                self.fileOP_Q.put(fileOpObj_Lst)
+                # Clear off the ChangeLogs (optimization)
+                self.__clearChangeLogs(mdtTarget, endRecId)
 
             # wait between collecting ChangeLogs
             self.event_flag.wait(self.__interval)
@@ -45,10 +51,17 @@ class ChangeLogCollector(Process):
     def __collectChangeLogs(self, mdtTarget):
         return subprocess.check_output("lfs changelog " + mdtTarget, shell=True)
 
+    # Clear old ChangeLogs records
+    def __clearChangeLogs(self, mdtTarget, endRec):
+        user = self.__chLogUser
+        return subprocess.check_output("lfs changelog_clear " + mdtTarget + " " + user + " " + endRec, shell=True)
+
     # Parse the ChangeLogs output line by line and place them into an array of changeLogs
     def __parseChaneLogs(self, chLogs, mdtTarget):
         # Create a list of FileOpObj objects
         fileOpObj_Lst = []
+        # last record ID that has been captured
+        endRecId = 0
         # Iterate over changeLogs line by line
         for line in chLogs.splitlines():
             # create a new FileOpObj object per record
@@ -82,8 +95,10 @@ class ChangeLogCollector(Process):
 
             # add the fileOpObj into fileOpObj_lst
             fileOpObj_Lst.append(fileOpObj)
+            # track the last record
+            endRecId = records[0]
 
-        return fileOpObj_Lst
+        return fileOpObj_Lst, endRecId
 
 
 #
@@ -145,5 +160,9 @@ class FileOpObj:
 
     def setMdtTarget(self, mdtTarget):
         self.mdtTarget = mdtTarget
+
+    # Overriding the Hash function for this object
+    def __hash__(self):
+        return hash((self.jobid, self.cluster, self.sched_type))
 
         

@@ -36,7 +36,7 @@ class ServerConfig:
         config = {'lustre' : ['mds_hosts', 'oss_hosts', 'mdt_targets'],
                   'rabbitmq' : ['server', 'username', 'password'],
                   'io_listener' : ['exchange', 'queue'],
-                  'changelogs' : ['interval'],
+                  'changelogs' : ['interval', 'user'],
                   'aggregator' : ['interval', 'timer_intv']}
         # Iterate over the Sections in config file
         for section in config.keys():
@@ -168,6 +168,14 @@ class ServerConfig:
             if not chlogIntv.isdigit():
                 raise ConfigReadExcetion("The 'interval' parameter under [changelogs] section must be numeric")
         return float(chlogIntv)
+
+    # Get the username of RabbitMQ-Server
+    # Return: String
+    def getChLogsUser(self):
+        chLogUser = None
+        if self.__loadConfigFile() or not hasattr(self, 'chLogUser'):
+            chLogUser = self.__parser.get('changelogs', 'user')
+        return chLogUser
 
     # Get the interval between aggregating the received data in the queue
     # Return: Float

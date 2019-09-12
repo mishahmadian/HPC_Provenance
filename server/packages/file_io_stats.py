@@ -16,12 +16,13 @@ import json
 #
 # This Class defines a new process which listens to the incoming port and collects
 # I/O statistics that are sent from File system (Lustre) agents and put them
-# into a queue (fsIOstat_Q)
+# into two queues (MSDStat_Q & OSSStat_Q)
 #
 class IOStatsListener(Process):
-    def __init__(self, fsIOstat_Q):
+    def __init__(self, MSDStat_Q, OSSStat_Q):
         Process.__init__(self)
-        self.fsIOstat_Q = fsIOstat_Q
+        self.MSDStat_Q = MSDStat_Q
+        self.OSSStat_Q = OSSStat_Q
         self.config = ServerConfig()
         try:
             self.__MDS_hosts = self.config.getMDS_hosts()
@@ -56,16 +57,16 @@ class IOStatsListener(Process):
         if io_stat_map["server"] in self.__MDS_hosts:
             # Then data should be processed for MDS
             mdsStatObjLst = self.__parseIoStats_mds(io_stat_map)
-            # Put mdsStatObjLst items into the fsIOstat_Q
-            for mdsStatObj in mdsStatObjLst:
-                self.fsIOstat_Q.put(mdsStatObj)
+            # Put mdsStatObjLst into the MSDStat_Q
+            #==for mdsStatObj in mdsStatObjLst:
+            self.MSDStat_Q.put(mdsStatObjLst)
 
         elif io_stat_map["server"] in self.__OSS_hosts:
             # Parse the OSS IO stats
             ossStatObjLst = self.__parseIoStats_oss(io_stat_map)
-            # Put ossStatObjs into fsIOstat_Q
-            for ossStatObj in ossStatObjLst:
-                self.fsIOstat_Q.put(ossStatObj)
+            # Put ossStatObjs into OSSStat_Q
+            #==for ossStatObj in ossStatObjLst:
+            self.OSSStat_Q.put(ossStatObjLst)
         else:
             # Otherwise the data should be processed for OSS
             raise IOStatsException("The Source of incoming data does not match "
@@ -205,6 +206,10 @@ class MDSDataObj:
         self.samedir_rename = 0
         self.crossdir_rename = 0
 
+    # Overriding the Hash function for this object
+    def __hash__(self):
+        return hash((self.jobid, self.cluster, self.sched_type))
+
 #
 # Object class that holds the process data by "ioStats_OSS_decode".
 # this class will be imported in other packages/classes
@@ -230,6 +235,10 @@ class OSSDataObj:
         self.punch = 0
         self.destroy = 0
         self.create = 0
+
+    # Overriding the Hash function for this object
+    def __hash__(self):
+        return hash((self.jobid, self.cluster, self.sched_type))
 
 #
 # In case of error the following exception can be raised
