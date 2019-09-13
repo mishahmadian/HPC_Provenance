@@ -13,6 +13,7 @@
 from config import ServerConfig, ConfigReadExcetion
 from multiprocessing import Process, Event
 from datetime import datetime
+from typing import List, Tuple
 import subprocess
 #
 # This Class defines a new process to collect Lustre changelog data from
@@ -48,18 +49,18 @@ class ChangeLogCollector(Process):
             self.event_flag.wait(self.__interval)
 
     # Collecting the lustre ChangeLogs data
-    def __collectChangeLogs(self, mdtTarget):
+    def __collectChangeLogs(self, mdtTarget: str) -> str:
         return subprocess.check_output("lfs changelog " + mdtTarget, shell=True)
 
     # Clear old ChangeLogs records
-    def __clearChangeLogs(self, mdtTarget, endRec):
+    def __clearChangeLogs(self, mdtTarget: str, endRec: int):
         user = self.__chLogUser
-        return subprocess.check_output("lfs changelog_clear " + mdtTarget + " " + user + " " + endRec, shell=True)
+        subprocess.check_output("lfs changelog_clear " + mdtTarget + " " + user + " " + str(endRec), shell=True)
 
     # Parse the ChangeLogs output line by line and place them into an array of changeLogs
-    def __parseChaneLogs(self, chLogs, mdtTarget):
+    def __parseChaneLogs(self, chLogs: str, mdtTarget: str) -> Tuple[List, int]:
         # Create a list of FileOpObj objects
-        fileOpObj_Lst = []
+        fileOpObj_Lst: List[FileOpObj] = []
         # last record ID that has been captured
         endRecId = 0
         # Iterate over changeLogs line by line
@@ -96,7 +97,7 @@ class ChangeLogCollector(Process):
             # add the fileOpObj into fileOpObj_lst
             fileOpObj_Lst.append(fileOpObj)
             # track the last record
-            endRecId = records[0]
+            endRecId = int(records[0])
 
         return fileOpObj_Lst, endRecId
 
@@ -115,15 +116,17 @@ class FileOpObj:
         self.op_type = None
         self.datetimestamp = None
         self.target_fid = None
+        self.target_path = None
         self.uid = None
         self.gid = None
         self.nid = None
         self.parent_fid = None
+        self.parent_path = None
         self.target_file = None
         self.mdtTarget = None
 
-    def setRecID(self, id):
-        self.recID = id
+    def setRecID(self, recID):
+        self.recID = recID
 
     def setJobInfo(self, jobInfo):
         # it can be a executable Job or a Process
@@ -143,8 +146,9 @@ class FileOpObj:
         date_time_obj = datetime.strptime(datetime_str, '%H:%M:%S.%f %Y.%m.%d')
         self.datetimestamp = datetime.timestamp(date_time_obj)
 
-    def setTargetFid(self, tfid):
+    def setTargetFid(self, tfid, mdtTarget):
         self.target_fid = tfid.split('=')[1].strip()
+        self.target_path = subprocess.check_output("lfs fid2path " + mdtTarget + " " + self.target_fid, shell=True)
 
     def setUserInfo(self, userinfo):
         self.uid, self.gid = userinfo.strip().split(':')
@@ -152,8 +156,9 @@ class FileOpObj:
     def setNid(self, nid):
         self.nid = nid
 
-    def setParentFid(self, pfid):
+    def setParentFid(self, pfid, mdtTarget):
         self.parent_fid = pfid.split('=')[1].strip()
+        self.parent_path = subprocess.check_output("lfs fid2path " + mdtTarget + " " + self.parent_path, shell=True)
 
     def setTargetFile(self, name):
         self.target_file = name
@@ -163,6 +168,9 @@ class FileOpObj:
 
     # Overriding the Hash function for this object
     def __hash__(self):
+        if self.procid:
+            # No hash for this object if jobID is not defined
+            return None
         return hash((self.jobid, self.cluster, self.sched_type))
 
         

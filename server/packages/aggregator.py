@@ -9,6 +9,7 @@ from config import ServerConfig, ConfigReadExcetion
 from multiprocessing import Process, Event, Manager
 from file_io_stats import MDSDataObj, OSSDataObj
 from threading import Event as Event_Thr, Thread
+from typing import Dict, Sequence
 import time
 
 #------ Global Variable ------
@@ -35,6 +36,8 @@ class Aggregator(Process):
 
     # Implement Process.run()
     def run(self):
+        # Define a new Dictionary type: {<int>, <ProvenanceObj>}
+        ProvenanceType = Dict[int, ProvenanceObj]
         #
         # Create a Timer Thread to be running for this process and change the
         # "timer_val" value every
@@ -44,8 +47,14 @@ class Aggregator(Process):
         #==timer.start()
 
         while not self.event_flag.is_set():
+            # a list of Processes
+            procList = [Process]
             # Create a shard Dictionary object which allows three process to update their values
-            jobFSTbl = Manager().dict()
+            jobFSTbl = Manager().dict(Sequence[ProvenanceType])
+            # reset the Times Up signal for all process
+            self.timesUp.clear()
+
+            #
 
             while not self.filesystem_Q.empty():
                 fsIOObj = self.filesystem_Q.get()
@@ -68,7 +77,9 @@ class Aggregator(Process):
         # Terminate timer after flag is set
         timer_flag.set()
 
-
+    # Aggregate and map all the MDS IO status data to a set of unique objects based on Job ID
+    def __aggrMDSioStats(self):
+        pass
 
     # Timer function to be used in a thread inside this process
     @staticmethod
@@ -78,6 +89,15 @@ class Aggregator(Process):
             timer_val = time.time()
             print(" real time is: " + str(timer_val))
             time.sleep(timerIntv)
+
+
+class ProvenanceObj:
+    def __init__(self):
+        self.jobid = None
+        self.cluster = None
+        self.sched_type = None
+        self.mds_host = None
+
 
 
 #

@@ -11,7 +11,8 @@
 """
 from communication import ServerConnection, CommunicationExp
 from config import ServerConfig, ConfigReadExcetion
-from multiprocessing import Process
+from multiprocessing import Process, Queue
+from typing import Dict, List, Iterable
 import json
 #
 # This Class defines a new process which listens to the incoming port and collects
@@ -19,7 +20,7 @@ import json
 # into two queues (MSDStat_Q & OSSStat_Q)
 #
 class IOStatsListener(Process):
-    def __init__(self, MSDStat_Q, OSSStat_Q):
+    def __init__(self, MSDStat_Q: Queue, OSSStat_Q: Queue):
         Process.__init__(self)
         self.MSDStat_Q = MSDStat_Q
         self.OSSStat_Q = OSSStat_Q
@@ -75,9 +76,9 @@ class IOStatsListener(Process):
     #
     # Convert/Map received data from MDS servers into a list of "MDSDataObj" data type
     #@staticmethod
-    def __parseIoStats_mds(self, data):
+    def __parseIoStats_mds(self, data: Dict[str, str]) -> List:
         # Create a List of MDSDataObj
-        mdsObjLst = []
+        mdsObjLst: List[MDSDataObj] = []
         timestamp = data["timestamp"]
         serverHost = data["server"]
         # Filter out a group of received JobStats of different jobs
@@ -92,7 +93,7 @@ class IOStatsListener(Process):
             mdsObj.timestamp = timestamp
             # The host name of the server
             mdsObj.mds_host = serverHost
-            # Parse the Jobstat output line by line
+            # Parse the JobStat output line by line
             for line in data["output"].splitlines():
                 # skip empty lines
                 if not line.strip():
@@ -117,22 +118,22 @@ class IOStatsListener(Process):
 
             # Put the mdsObj into a list
             mdsObjLst.append(mdsObj)
-        # Retrun the jobstat output in form of MDSDataObj data type
+        # Return the JobStat output in form of MDSDataObj data type
         return mdsObjLst
 
     #
     # Convert/Map received data from MDS servers into "OSSDataObj" data type
     #@staticmethod
-    def __parseIoStats_oss(self, data):
+    def __parseIoStats_oss(self, data: Dict[str, str]) -> List:
         # Create a List of OSSDataObj
-        ossObjLst = []
+        ossObjLst: List[OSSDataObj] = []
         timestamp = data["timestamp"]
         serverHost = data["server"]
         # Filter out a group of received JobStats of different jobs
         jobstatLst = data["output"].split("job_stats:")
         # drop the first element because its always empty
         del jobstatLst[0]
-        # Iterate over the jobstatLst
+        # Iterate over the jobStatLst
         for jobstat in jobstatLst:
             # Create new OSSDataObj
             ossObj = OSSDataObj()
@@ -140,7 +141,7 @@ class IOStatsListener(Process):
             ossObj.timestamp = timestamp
             # The host name of the server
             ossObj.oss_host = serverHost
-            # Parse the Jobstat output line by line
+            # Parse the JobStat output line by line
             for line in data["output"].splitlines():
                 # skip empty lines
                 if not line.strip():
