@@ -12,6 +12,7 @@
 """
 from file_io_stats import IOStatsListener, IOStatsException
 from aggregator import Aggregator, AggregatorException
+from file_op_logs import ChangeLogCollector
 from communication import CommunicationExp
 from config import ConfigReadExcetion
 from multiprocessing import Queue
@@ -24,6 +25,7 @@ import signal
 class Main_Interface:
     def __init__(self):
         self.IOStatsLsn_Proc = None
+        self.fileOPStats_Proc = None
         self.aggregator_Proc = None
         self.count = 0
 
@@ -40,19 +42,23 @@ class Main_Interface:
         try:
             MSDStat_Q = Queue()
             OSSStat_Q = Queue()
-            fileOP_Q = Queue
+            fileOP_Q = Queue()
 
             # IO Stats Listener Process
-            self.IOStatsLsn_Proc = IOStatsListener(MSDStat_Q, OSSStat_Q)
-            self.IOStatsLsn_Proc.start()
+            #self.IOStatsLsn_Proc = IOStatsListener(MSDStat_Q, OSSStat_Q)
+            #self.IOStatsLsn_Proc.start()
+
+            # File Operation Log collector Process
+            self.fileOPStats_Proc = ChangeLogCollector(fileOP_Q)
+            self.fileOPStats_Proc.start()
 
             # Aggregator Process
-            self.aggregator_Proc = Aggregator(MSDStat_Q, OSSStat_Q, fileOP_Q)
-            self.aggregator_Proc.start()
+            #self.aggregator_Proc = Aggregator(MSDStat_Q, OSSStat_Q, fileOP_Q)
+            #self.aggregator_Proc.start()
 
             while True:
                 sleep(0.5)
-                if not self.IOStatsLsn_Proc.is_alive() or not self.aggregator_Proc.is_alive():
+                if not self.fileOPStats_Proc.is_alive(): #not self.IOStatsLsn_Proc.is_alive() or not self.aggregator_Proc.is_alive()
                     raise ProvenanceExitExp
 
         except ProvenanceExitExp:
@@ -76,9 +82,15 @@ class Main_Interface:
         finally:
             if not self.IOStatsLsn_Proc is None:
                 self.IOStatsLsn_Proc.terminate()
+                self.IOStatsLsn_Proc.join()
 
             if not self.aggregator_Proc is None:
                 self.aggregator_Proc.terminate()
+                self.aggregator_Proc.join()
+
+            if not self.fileOPStats_Proc is None:
+                self.fileOPStats_Proc.terminate()
+                self.fileOPStats_Proc.join()
 
             print("Done!")
 

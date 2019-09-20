@@ -174,6 +174,102 @@ class ProcTest(Process):
             self.timesUp.wait(1)
 
 
-mainProc = ProcTest()
-mainProc.start()
-mainProc.join()
+#mainProc = ProcTest()
+#mainProc.start()
+#mainProc.join()
+
+from typing import Type
+class Config:
+
+    def getValue(self, sec: str, key: str, dataType: Type):
+        attrName = sec + '_' + key
+        if not hasattr(self, attrName):
+            print("New value!")
+            setattr(self, attrName, "Hello..")
+            print(dataType("123"))
+            print(dataType.__name__)
+        return getattr(self, attrName)
+
+#conf = Config()
+#print(conf.getValue('sec1', 'key1', float))
+#print(conf.getValue('sec1', 'key2'))
+#print(float("123b4"))
+from multiprocessing import Pool
+from math import ceil
+
+class ProcTest2(Process):
+    def __init__(self):
+        Process.__init__(self)
+        self.event_flag = Event()
+        self.timesUp = Event()
+        self.myLst = [(0,1), (4,2), (7,3), (9,4)]
+
+    def run(self):
+        pool = Pool(2)
+        chunkSize = ceil(len(self.myLst)/2)
+        #print (chunkSize)
+        results = pool.imap_unordered(self.doSomething, self.myLst, chunksize=chunkSize)
+        pool.close()
+        pool.join()
+
+        for num, text in results:
+            print("number {} * 2 = {}".format(num, text))
+
+    @staticmethod
+    def doSomething(t):
+        x, y = t
+        print(str(x) + " " + str(y))
+        return y, str(x * 2)
+
+#procTest2 = ProcTest2()
+#procTest2.start()
+#procTest2.join()
+
+'''
+for inx, rec in enumerate(recs):
+    if (inx == len(recs) - 1) and ("=" not in rec):
+        print("index={}  rec={}".format(inx, rec))
+        chlogRec = "96 06UNLNK 21:06:00.508754493 2019.03.07 0x1 t=[0x200000403:0x60:0x0] j=rm.1000 ef=0xf u=0:0 nid=0@<0:0> p=[0x200000405:0x2:0x0] test2.txt"
+        recs = chlogRec.split(' ')
+'''
+import subprocess
+from multiprocessing import Event as P_Event, Pool
+
+class ProcTest3(Process):
+    def __init__(self):
+        Process.__init__(self)
+        self.mdtTarget = "test-MDT0000"
+        self.startRec = 0
+        self.event = P_Event()
+
+    @staticmethod
+    def __procTest(dummy):
+        time.sleep(2)
+        print("its funny")
+        return None
+
+    def run(self):
+        while not self.event.is_set():
+            result = self.__test(self.mdtTarget, self.startRec)
+            self.startRec = 1811
+
+            pool = Pool(12)
+            pool.map(self.__procTest, [i for i in range(100)], chunksize=2)
+            pool.close()
+            pool.join()
+
+            if not result:
+                print("empty")
+            else: print(result)
+
+            self.event.wait(2)
+
+    def __test(self, mdtTarget: str, startRec: int) -> str:
+        #return subprocess.check_output("lfs changelog " + mdtTarget + " " + str(startRec + 1),
+        #                                 shell=True).decode("utf-8")
+        return subprocess.check_output("lfs changelog " + mdtTarget + " " + str(startRec + 1), shell=True, stderr=subprocess.STDOUT).decode("utf-8")
+
+
+procTest3 = ProcTest3()
+procTest3.start()
+procTest3.join()

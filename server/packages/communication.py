@@ -53,7 +53,7 @@ class ServerConnection:
         try:
             conn.close()
 
-        except (exceptions.AMQPError) as amqExp:
+        except exceptions.AMQPError as amqExp:
             raise CommunicationExp("Connection did not close Properly. {}".format(amqExp),
                                     CommunicationExp.Type.AMQP_CLOSE)
 
@@ -82,7 +82,7 @@ class ServerConnection:
         channel.basic_qos(prefetch_count=1)
         # Set basic consumer with a "callback" function
         channel.basic_consume(callback, queue=queue, no_ack=True)
-        # Start consumming: Listenning to the channel and collecting the
+        # Start consuming: Listening to the channel and collecting the
         # incoming IO stats from agents
         channel.start_consuming()
         #while channel._consumer_infos:
@@ -94,13 +94,13 @@ class ServerConnection:
 # In any case of Error, Exception, or Mistake ConfigReadExcetion will be raised
 #
 class CommunicationExp(Exception):
-    def __init__(self, message, type):
+    def __init__(self, message, expType):
         super(CommunicationExp, self).__init__(message)
         self.message = message
-        self.type = type
+        self.expType = expType
 
     def getMessage(self):
-        return "\n [Error] _{}_: {} \n".format(self.type.name, self.message)
+        return "\n [Error] _{}_: {} \n".format(self.expType.name, self.message)
 
     #
     # Communication Exception may have different causes

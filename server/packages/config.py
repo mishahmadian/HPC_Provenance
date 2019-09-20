@@ -11,8 +11,8 @@
 """
 
 from configparser import ConfigParser
+from typing import Type
 import os
-import time
 
 #
 # Main class in Config.py that reads and maintains the configuration
@@ -30,13 +30,15 @@ class ServerConfig:
         realPath = os.path.realpath(configFile)
         self.__filepath = realPath
 
-    # Validate the server.conf to ensure all the mandatorysections and options
+    #============= Private Methods =========================================
+
+    # Validate the server.conf to ensure all the mandatory sections and options
     # are defined and correct
     def __validateConfig(self):
         config = {'lustre' : ['mds_hosts', 'oss_hosts', 'mdt_targets'],
                   'rabbitmq' : ['server', 'username', 'password'],
                   'io_listener' : ['exchange', 'queue'],
-                  'changelogs' : ['interval', 'user'],
+                  'changelogs' : ['parallel','interval', 'users'],
                   'aggregator' : ['interval', 'timer_intv']}
         # Iterate over the Sections in config file
         for section in config.keys():
@@ -65,7 +67,7 @@ class ServerConfig:
         # Check is "server.conf" exist
         if not os.path.isfile(self.__filepath):
             raise ConfigReadExcetion("The config file (server.conf) does not exist")
-        # Load the confg file if it's been changed so far. Otherwise, keep the
+        # Load the config file if it's been changed so far. Otherwise, keep the
         # file content in memory. the first time it will load the file in memory.
         if self.__isCondigFileModified():
             # Read the server.conf file and parse it
@@ -76,126 +78,111 @@ class ServerConfig:
             return True
         return False
 
+    def __getConfigValue(self, section: str, key: str, retType: Type):
+        attrName = section + '_' + key
+        # Check if the value has been changed or is not available in this object yet
+        # if so, then create it:
+        if self.__loadConfigFile() or not hasattr(self, attrName):
+            # If the value type should be a list
+            if retType is list:
+                # convert comma separated values of an specific key of specific section to List of values
+                tempList = [value.strip() for value in self.__parser.get(section, key).split(',')]
+                setattr(self, attrName, tempList)
+
+            # If the value type should be either Integer or Float
+            elif retType is int or retType is float:
+                try:
+                    tempVal = retType(self.__parser.get(section, key))
+                    setattr(self, attrName, tempVal)
+                except ValueError:
+                    raise ConfigReadExcetion("The '{}' parameter under [{}] section must be numeric type of {}"
+                                             .format(key, section, retType.__name__))
+
+            # If the value type should be a String
+            elif retType is str:
+                tempStr = self.__parser.get(section, key)
+                setattr(self, attrName, tempStr)
+
+        # Anyway, return the requested value
+        return getattr(self, attrName)
+
+    # ============= Public Methods =========================================
 
     # Get a list of Lustre fsname(s) defined in Config file
     #   Return: List
-    def getMdtTargets(self):
-        mdtTargets = None
-        if self.__loadConfigFile() or not hasattr(self, 'mdtTargets'):
-            mdtTargets = [mdtTarget.strip() for mdtTarget in self.__parser.get('lustre', 'mdt_targets').split(',')]
-        return mdtTargets
+    def getMdtTargets(self) -> list:
+        return self.__getConfigValue('lustre', 'mdt_targets', list)
 
     # Get a list of MDS host names defined in Config file
     #   Return: List
-    def getMDS_hosts(self):
-        MDShosts = None
-        if self.__loadConfigFile() or not hasattr(self, 'MDShosts'):
-            MDShosts = [fsname.strip() for fsname in self.__parser.get('lustre', 'mds_hosts').split(',')]
-        return MDShosts
+    def getMDS_hosts(self) -> list:
+        return self.__getConfigValue('lustre', 'mds_hosts', list)
 
     # Get a list of OSS host names defined in Config file
     #   Return: List
-    def getOSS_hosts(self):
-        OSSHosts = None
-        if self.__loadConfigFile() or not hasattr(self, 'OSSHosts'):
-            OSSHosts = [fsname.strip() for fsname in self.__parser.get('lustre', 'oss_hosts').split(',')]
-        return OSSHosts
+    def getOSS_hosts(self) -> list:
+        return self.__getConfigValue('lustre', 'oss_hosts', list)
 
     # Get the name of the server that RabbitMQ-Server is Running
     # Return: String
-    def getServer(self):
-        serverName = None
-        if self.__loadConfigFile() or not hasattr(self, 'serverName'):
-            serverName = self.__parser.get('rabbitmq', 'server')
-        return serverName
+    def getServer(self) -> str:
+        return self.__getConfigValue('rabbitmq', 'server', str)
 
     # Get the name of the port number of the RabbitMQ-Server
     # Return: String
-    def getPort(self):
-        serverPort = None
-        if self.__loadConfigFile() or not hasattr(self, 'serverPort'):
-            serverPort = self.__parser.get('rabbitmq', 'port')
-            if not serverPort.isdigit():
-                raise ConfigReadExcetion("The 'port' parameter under [rabbitmq] section must be numeric")
-        return serverPort
+    def getPort(self) -> str:
+        return str(self.__getConfigValue('rabbitmq', 'port', int))
 
     # Get the username of RabbitMQ-Server
     # Return: String
-    def getUsername(self):
-        serverUsername = None
-        if self.__loadConfigFile() or not hasattr(self, 'serverUsername'):
-            serverUsername = self.__parser.get('rabbitmq', 'username')
-        return serverUsername
+    def getUsername(self) -> str:
+        return self.__getConfigValue('rabbitmq', 'username', str)
 
     # Get the password of RabbitMQ-Server
     # Return: String
-    def getPassword(self):
-        serverPassword = None
-        if self.__loadConfigFile() or not hasattr(self, 'serverPassword'):
-            serverPassword = self.__parser.get('rabbitmq', 'password')
-        return serverPassword
+    def getPassword(self) -> str:
+        return self.__getConfigValue('rabbitmq', 'password', str)
 
     # Get the Vhost of the RabbitMQ-Server which handles the Lustre monitoring
     # Return: String
-    def getVhost(self):
-        virtualHost = None
-        if self.__loadConfigFile() or not hasattr(self, 'virtualHost'):
-            virtualHost = self.__parser.get('rabbitmq', 'vhost')
-        return virtualHost
+    def getVhost(self) -> str:
+        return self.__getConfigValue('rabbitmq', 'vhost', str)
 
     # Get the name of the Queue that io_listener uses
     # Return: String
-    def getIOListener_Queue(self):
-        IOLisnQueue = None
-        if self.__loadConfigFile() or not hasattr(self, 'IOLisnQueue'):
-            IOLisnQueue = self.__parser.get('io_listener', 'queue')
-        return IOLisnQueue
+    def getIOListener_Queue(self) -> str:
+        return self.__getConfigValue('io_listener', 'queue', str)
 
     # Get the name of the Exchange that io_listener uses
     # Return: String
-    def getIOListener_Exch(self):
-        IOLisnExchange = None
-        if self.__loadConfigFile() or not hasattr(self, 'IOLisnExchange'):
-            IOLisnExchange = self.__parser.get('io_listener', 'exchange')
-        return IOLisnExchange
+    def getIOListener_Exch(self) -> str:
+        return self.__getConfigValue('io_listener', 'exchange', str)
 
-    # Get the interval between collecting Lustre changelogs
+    # Get number of process that can be running in parallel to collect ChangeLogs
+    # Return: Int
+    def getChLogsPocnum(self) -> int:
+        return self.__getConfigValue('changelogs', 'parallel', int)
+
+    # Get the interval between collecting Lustre ChangeLogs
     # Return: Float
-    def getChLogsIntv(self):
-        chlogIntv = None
-        if self.__loadConfigFile() or not hasattr(self, 'chlogIntv'):
-            chlogIntv = self.__parser.get('changelogs', 'interval')
-            if not chlogIntv.isdigit():
-                raise ConfigReadExcetion("The 'interval' parameter under [changelogs] section must be numeric")
-        return float(chlogIntv)
+    def getChLogsIntv(self) -> float:
+        return self.__getConfigValue('changelogs', 'interval', int)
 
-    # Get the username of RabbitMQ-Server
-    # Return: String
-    def getChLogsUser(self):
-        chLogUser = None
-        if self.__loadConfigFile() or not hasattr(self, 'chLogUser'):
-            chLogUser = self.__parser.get('changelogs', 'user')
-        return chLogUser
+    # Get the list of ChangeLogs users defined for each MDT
+    # Return: List
+    def getChLogsUsers(self) -> list:
+        return self.__getConfigValue('changelogs', 'users', list)
 
     # Get the interval between aggregating the received data in the queue
     # Return: Float
-    def getAggrIntv(self):
-        aggrIntv = None
-        if self.__loadConfigFile() or not hasattr(self, 'aggrIntv'):
-            aggrIntv = self.__parser.get('aggregator', 'interval')
-            if not aggrIntv.isdigit():
-                raise ConfigReadExcetion("The 'interval' parameter under [aggregator] section must be numeric")
-        return float(aggrIntv)
+    def getAggrIntv(self) -> float:
+        return self.__getConfigValue('aggregator', 'interval', float)
 
     # Get the Aggregator timer Interval
     # Return: Float
-    def getAggrTimer(self):
-        aggrtimer = None
-        if self.__loadConfigFile() or not hasattr(self, 'aggrtimer'):
-            aggrtimer = self.__parser.get('aggregator', 'timer_intv')
-            if not aggrtimer.isdigit():
-                raise ConfigReadExcetion("The 'timer_intv' parameter under [aggregator] section must be numeric")
-        return float(aggrtimer)
+    def getAggrTimer(self) -> float:
+        return self.__getConfigValue('aggregator', 'timer_intv', float)
+
 
 #
 # In any case of Error, Exception, or Mistake ConfigReadExcetion will be raised

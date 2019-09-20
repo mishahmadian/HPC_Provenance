@@ -99,7 +99,6 @@ class ProvenanceObj:
         self.mds_host = None
 
 
-
 #
 # In case of error the following exception can be raised
 #

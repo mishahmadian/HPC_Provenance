@@ -12,7 +12,7 @@
 from communication import ServerConnection, CommunicationExp
 from config import ServerConfig, ConfigReadExcetion
 from multiprocessing import Process, Queue
-from typing import Dict, List, Iterable
+from typing import Dict, List
 import json
 #
 # This Class defines a new process which listens to the incoming port and collects
@@ -52,7 +52,7 @@ class IOStatsListener(Process):
     # This function will be triggered as soon as RabbitMQ receives data from
     # agents on jobStat queue
     def ioStats_receiver(self, ch, method, properties, body):
-        io_stat_map = json.loads(body.decode())
+        io_stat_map = json.loads(body.decode("utf-8"))
         # Check whether the IO stat data comes from MDS or OSS.
         # Then choose the proper function
         if io_stat_map["server"] in self.__MDS_hosts:
