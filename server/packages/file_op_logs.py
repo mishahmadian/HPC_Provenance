@@ -17,6 +17,7 @@ from typing import List
 from pprint import pprint
 from math import ceil
 import subprocess
+import ctypes
 import time
 import os
 #
@@ -45,24 +46,19 @@ class ChangeLogCollector(Process):
         # keep the last record that has been processed and use that as the first record
         # that should be processed for each MDT Target. The default value of zero let
         # ChangLogs to be captured from the beginning
-        lastCapturedRec = [0 for rec in range(0, len(self.__mdtTargets))]
+        lastCapturedRec = [0 for _ in range(0, len(self.__mdtTargets))]
 
         while not self.event_flag.is_set():
-            # Create a list of FileOpObj objects
-            fileOpObj_Lst: List[FileOpObj] = []
-            print("I'm here")
-            startT = time.time()
+
             for inx, mdtTarget in enumerate(self.__mdtTargets):
+                # Create a list of FileOpObj objects
+                fileOpObj_Lst: List[FileOpObj]
                 # Collect ChangeLogs from Client Lustre filesystem
-                print(lastCapturedRec[inx])
                 chLogs_out = self.__collectChangeLogs(mdtTarget, lastCapturedRec[inx])
-                print("I'm here too")
                 # convert each row into an item in a List for parallel processing the list
                 chLogOutputs: List[str] = chLogs_out.splitlines()
                 # If the list of chLogOutputs is empty, then ignore following lines
-                print(len(chLogOutputs))
                 if not (len(chLogOutputs)):
-                    print("No more record")
                     continue
 
                 # Define the size of each chunk of data than needs to be processed by each process
@@ -75,15 +71,11 @@ class ChangeLogCollector(Process):
                 pool = Pool(processes = self.__procNum if self.__procNum > 0 else cpu_count())
                 # run a poll of process to map the ChangeLogs outputs line by line to FileOpObj objects
                 # Those lines that do not have JobId will be ignored at this time!
-                results = pool.starmap(self.changeLogs2FileOpsObj,
+                fileOpObj_Lst = pool.starmap(self.changeLogs2FileOpsObj,
                                           [(chlog, mdtTarget) for chlog in chLogOutputs if "j=" in chlog],
                                           chunksize=chunkSize)
                 pool.close()
                 pool.join()
-                # Place the results from all the processes into a List
-                for fileOpObj in results:
-                    # add the fileOpObj into fileOpObj_lst
-                    fileOpObj_Lst.append(fileOpObj)
 
                 # Put the list of File Operations info in the main Queue which is shared with Aggregator
                 self.fileOP_Q.put(fileOpObj_Lst)
@@ -94,24 +86,18 @@ class ChangeLogCollector(Process):
                 # The last object in the list holds the last Rec#
                 endRecNum = fileOpObj_Lst[-1].recID
                 # Keep the endRecNum in array cell corresponding to the MDT Targets index
-                lastCapturedRec[inx] = endRecNum
+                lastCapturedRec[inx] = int(endRecNum)
                 # Clear off the ChangeLogs (optimization)
                 ###self.__clearChangeLogs(mdtTarget, user, endRecId)
 
-                pprint(vars(fileOpObj_Lst[-1]))
-                print("Last Rec#: " + str(fileOpObj_Lst[-1].recID))
+                #pprint(vars(fileOpObj_Lst[-1]))
 
-            print("I'm done")
-            print("proc#={}  Time: {}".format(self.__procNum, (time.time() - startT)))
             # wait between collecting ChangeLogs
             self.event_flag.wait(self.__interval)
 
     # Collecting the lustre ChangeLogs data
     def __collectChangeLogs(self, mdtTarget: str, startRec: int) -> str:
-        print("mdtTarget: {}    startRec: {}".format(mdtTarget, startRec))
-        results = subprocess.check_output("lfs changelog " + mdtTarget + " " + str(startRec + 1), shell=True).decode("utf-8")
-        print("I got in here")
-        return results
+        return subprocess.check_output("lfs changelog " + mdtTarget + " " + str(startRec + 1), shell=True).decode("utf-8")
 
     # Clear old ChangeLogs records
     def __clearChangeLogs(self, mdtTarget: str, user: str, endRec: int):
@@ -128,7 +114,7 @@ class ChangeLogCollector(Process):
         fileOpObj.setMdtTarget(mdtTarget)  # pass the mdtTarget that changeLogs where collected from
         fileOpObj.setRecID(records[0])  # Record Id
         fileOpObj.setOpType(records[1])  # The Type of File Operation
-        fileOpObj.setDateTimeStamp(records[2], records[3])  # Date&TimeStamp based on Time and Date of each record
+        fileOpObj.setTimestamp(records[2], records[3])  # Date&TimeStamp based on Time and Date of each record
         # -- skip record[4] which is an operation type flag
         fileOpObj.setTargetFid(records[5], mdtTarget)  # Target FID
         fileOpObj.setJobInfo(records[6])
@@ -156,7 +142,7 @@ class ChangeLogCollector(Process):
 # Object class that holds the parsed data from Lustre  ChangeLogs.
 # this class will be imported in other packages/classes
 #
-class FileOpObj:
+class FileOpObj(object):
     def __init__(self):
         self.recID = 0
         self.jobid = None
@@ -164,7 +150,7 @@ class FileOpObj:
         self.sched_type = None
         self.procid = None
         self.op_type = None
-        self.datetimestamp = None
+        self.timestamp = None
         self.target_fid = None
         self.target_path = None
         self.uid = None
@@ -191,11 +177,11 @@ class FileOpObj:
         # Ignore the Operation code
         self.op_type = ''.join([ch for ch in opinfo if not ch.isdigit()])
 
-    def setDateTimeStamp(self, time_str, date_str):
+    def setTimestamp(self, time_str, date_str):
         # (Naive way) Covert the Nanosecond to Millisecond since Python does not support Nanoseconds
         datetime_str = time_str[:-3] + " " + date_str
         date_time_obj = datetime.strptime(datetime_str, '%H:%M:%S.%f %Y.%m.%d')
-        self.datetimestamp = datetime.timestamp(date_time_obj)
+        self.timestamp = datetime.timestamp(date_time_obj)
 
     def setTargetFid(self, tfid, mdtTarget):
         self.target_fid = tfid.split('=')[1].strip()
@@ -234,6 +220,9 @@ class FileOpObj:
         if self.procid:
             # No hash for this object if jobID is not defined
             return None
-        return hash((self.jobid, self.cluster, self.sched_type))
+        # calculate the hash
+        hashVal = hash((self.jobid, self.cluster, self.sched_type))
+        # make sure the value is always positive (we don't want negative hash to be used as ID)
+        return ctypes.c_size_t(hashVal).value
 
         

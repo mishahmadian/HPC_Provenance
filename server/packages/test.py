@@ -233,28 +233,29 @@ for inx, rec in enumerate(recs):
         recs = chlogRec.split(' ')
 '''
 import subprocess
-from multiprocessing import Event as P_Event, Pool
+from multiprocessing import Event as P_Event, Pool, Queue
 
+
+def procTest(dummy):
+    #time.sleep(2)
+    print("its funny")
+    return None
 class ProcTest3(Process):
     def __init__(self):
         Process.__init__(self)
         self.mdtTarget = "test-MDT0000"
         self.startRec = 0
         self.event = P_Event()
-
-    @staticmethod
-    def __procTest(dummy):
-        time.sleep(2)
-        print("its funny")
-        return None
+        self.testList = [i for i in range(2)]
 
     def run(self):
         while not self.event.is_set():
             result = self.__test(self.mdtTarget, self.startRec)
             self.startRec = 1811
 
-            pool = Pool(12)
-            pool.map(self.__procTest, [i for i in range(100)], chunksize=2)
+            print(self.testList)
+            pool = Pool(10)
+            pool.map(procTest, self.testList, chunksize=2)
             pool.close()
             pool.join()
 
@@ -270,6 +271,33 @@ class ProcTest3(Process):
         return subprocess.check_output("lfs changelog " + mdtTarget + " " + str(startRec + 1), shell=True, stderr=subprocess.STDOUT).decode("utf-8")
 
 
-procTest3 = ProcTest3()
-procTest3.start()
-procTest3.join()
+#procTest3 = ProcTest3()
+#procTest3.start()
+#procTest3.join()
+from typing import List
+class myObj1:
+    def __init__(self):
+        self.name = None
+        self.lastname = None
+
+class myObj2:
+    def __init__(self):
+        self.id = 0
+        self.text = None
+        self.obj1Lst: List[myObj1] = []
+
+    def insert(self, myobj1):
+        objlist = self.obj1Lst
+        objlist.append(myobj1)
+        print(self.obj1Lst)
+from typing import Dict
+myobj1 = myObj1()
+myobj1.name = "misha"
+myobj1.lastname = "ahmadian"
+mydict = {}
+mydict[688029230966746750] = myObj2()
+mydict[688029230966746750].insert(myobj1)
+mydict[688029230966746750].insert(myobj1)
+mydict[688029230966746750].insert(myobj1)
+
+

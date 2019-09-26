@@ -13,7 +13,9 @@ from communication import ServerConnection, CommunicationExp
 from config import ServerConfig, ConfigReadExcetion
 from multiprocessing import Process, Queue
 from typing import Dict, List
+import ctypes
 import json
+
 #
 # This Class defines a new process which listens to the incoming port and collects
 # I/O statistics that are sent from File system (Lustre) agents and put them
@@ -56,15 +58,19 @@ class IOStatsListener(Process):
         # Check whether the IO stat data comes from MDS or OSS.
         # Then choose the proper function
         if io_stat_map["server"] in self.__MDS_hosts:
+            #print("I'm here 1_MDS")
             # Then data should be processed for MDS
             mdsStatObjLst = self.__parseIoStats_mds(io_stat_map)
+            #print("I'm here 2_MDS")
             # Put mdsStatObjLst into the MSDStat_Q
             #==for mdsStatObj in mdsStatObjLst:
             self.MSDStat_Q.put(mdsStatObjLst)
 
         elif io_stat_map["server"] in self.__OSS_hosts:
             # Parse the OSS IO stats
+            #print("I'm here 1_OSS")
             ossStatObjLst = self.__parseIoStats_oss(io_stat_map)
+            #print("I'm here 2_OSS")
             # Put ossStatObjs into OSSStat_Q
             #==for ossStatObj in ossStatObjLst:
             self.OSSStat_Q.put(ossStatObjLst)
@@ -186,7 +192,7 @@ class IOStatsListener(Process):
 # Object class that holds the process data by "ioStats_mds_decode".
 # this class will be imported in other packages/classes
 #
-class MDSDataObj:
+class MDSDataObj(object):
     def __init__(self):
         self.mds_host = None
         self.timestamp = 0
@@ -209,13 +215,17 @@ class MDSDataObj:
 
     # Overriding the Hash function for this object
     def __hash__(self):
-        return hash((self.jobid, self.cluster, self.sched_type))
+        # calculate the hash
+        hashVal = hash((self.jobid, self.cluster, self.sched_type))
+        # make sure the value is always positive (we don't want negative hash to be used as ID)
+        return ctypes.c_size_t(hashVal).value
+
 
 #
 # Object class that holds the process data by "ioStats_OSS_decode".
 # this class will be imported in other packages/classes
 #
-class OSSDataObj:
+class OSSDataObj(object):
     def __init__(self):
         self.oss_host = None
         self.timestamp = 0
@@ -239,7 +249,10 @@ class OSSDataObj:
 
     # Overriding the Hash function for this object
     def __hash__(self):
-        return hash((self.jobid, self.cluster, self.sched_type))
+        # calculate the hash
+        hashVal = hash((self.jobid, self.cluster, self.sched_type))
+        # make sure the value is always positive (we don't want negative hash to be used as ID)
+        return ctypes.c_size_t(hashVal).value
 
 #
 # In case of error the following exception can be raised

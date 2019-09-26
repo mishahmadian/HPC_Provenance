@@ -17,7 +17,7 @@ from communication import CommunicationExp
 from config import ConfigReadExcetion
 from multiprocessing import Queue
 from time import sleep, ctime
-import signal
+import signal, sys, os
 
 #
 # The main class which is executed by the main Daemon process
@@ -33,6 +33,13 @@ class Main_Interface:
         signal.signal(signal.SIGINT, self.server_exit)
         signal.signal(signal.SIGTERM, self.server_exit)
 
+        # make sure the $PYTHONHASHSEED is disabled otherwise the hash function for each object
+        # generates different hash number at each session and will cause a huge mess in database
+        if os.getenv('PYTHONHASHSEED') != '0':
+            print("[ERROR] _MAIN_INTERFACE_: the PYTHONHASHSEED environment variable must be set to '0': \n\n"
+                  "     export PYTHONHASHSEED=0\n")
+            sys.exit(-1)
+
     # Handle the SIGINT and SIGTERM signals in order to shutdown the server
     def server_exit(self, sig, frame):
         raise ProvenanceExitExp
@@ -45,21 +52,21 @@ class Main_Interface:
             fileOP_Q = Queue()
 
             # IO Stats Listener Process
-            #self.IOStatsLsn_Proc = IOStatsListener(MSDStat_Q, OSSStat_Q)
-            #self.IOStatsLsn_Proc.start()
+            self.IOStatsLsn_Proc = IOStatsListener(MSDStat_Q, OSSStat_Q)
+            self.IOStatsLsn_Proc.start()
 
             # File Operation Log collector Process
             self.fileOPStats_Proc = ChangeLogCollector(fileOP_Q)
             self.fileOPStats_Proc.start()
 
             # Aggregator Process
-            #self.aggregator_Proc = Aggregator(MSDStat_Q, OSSStat_Q, fileOP_Q)
-            #self.aggregator_Proc.start()
+            self.aggregator_Proc = Aggregator(MSDStat_Q, OSSStat_Q, fileOP_Q)
+            self.aggregator_Proc.start()
 
             while True:
                 sleep(0.5)
-                if not self.fileOPStats_Proc.is_alive(): #not self.IOStatsLsn_Proc.is_alive() or not self.aggregator_Proc.is_alive()
-                    raise ProvenanceExitExp
+                #if not self.fileOPStats_Proc.is_alive() or not self.IOStatsLsn_Proc.is_alive() or not self.aggregator_Proc.is_alive():
+                #    raise ProvenanceExitExp
 
         except ProvenanceExitExp:
             print("\nProvenance Server is shutting down...")

@@ -20,7 +20,6 @@ import os
 #
 class ServerConfig:
 
-    # Private Constructor
     def __init__(self):
         self.__parser = ConfigParser()
         # Track the config file changes
