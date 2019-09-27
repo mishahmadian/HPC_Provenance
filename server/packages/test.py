@@ -279,6 +279,10 @@ class myObj1:
     def __init__(self):
         self.name = None
         self.lastname = None
+        self.num = 0
+
+    def __lt__(self, other):
+        return self.num < other.num
 
 class myObj2:
     def __init__(self):
@@ -291,13 +295,9 @@ class myObj2:
         objlist.append(myobj1)
         print(self.obj1Lst)
 from typing import Dict
-myobj1 = myObj1()
-myobj1.name = "misha"
-myobj1.lastname = "ahmadian"
-mydict = {}
-mydict[688029230966746750] = myObj2()
-mydict[688029230966746750].insert(myobj1)
-mydict[688029230966746750].insert(myobj1)
-mydict[688029230966746750].insert(myobj1)
 
+import json, urllib.request
 
+r = urllib.request.urlopen("http://10.102.14.17:8182/jobs/79")
+data = json.loads(r.read().decode(r.info().get_param('charset') or 'utf-8'))
+print(json.dumps(data, sort_keys=True, indent=4))

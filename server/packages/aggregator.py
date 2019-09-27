@@ -27,6 +27,7 @@ class Aggregator(Process):
         self.fileOP_Q = fileOP_Q
         self.event_flag = Event()
         self.timesUp = Event()
+        self.currentTime = 0
         self.config = ServerConfig()
         try:
             self.__interval = self.config.getAggrIntv()
@@ -46,6 +47,8 @@ class Aggregator(Process):
         #==timer.start()
 
         while not self.event_flag.is_set():
+            # Record the current timestamp
+            self.currentTime = time.time()
             print("========= Start aggregating:")
             # a list of Processes
             procList: List[Process] = []
@@ -92,23 +95,23 @@ class Aggregator(Process):
                 obj_List = allFS_Q.get()
                 # extract objects from obj_List which can be either MDSDataObj, OSSDataObj, or FileOpObj type
                 for obj_Q in obj_List:
-                    # the hash function for each object in the queue should be the same for the same
+                    # the uniqID function for each object in the queue should be the same for the same
                     # jobID, Cluster, and SchedType, not mather what type of object are they
-                    hash_id = hash(obj_Q)
+                    uniq_id = obj_Q.uniqID()
+                    print(uniq_id)
                     # Ignore None hash IDs
-                    if hash_id is None:
+                    if uniq_id is None:
                         continue
                     # if no data has been entered for this JonID_Cluster_SchedType, then create a ProvenanceObj
                     # and fill it, otherwise append the object to the current available ProvenanceObj
-                    if not hash_id in provFSTbl.keys():
-                        provFSTbl[hash_id] = ProvenanceObj()
-
+                    if not uniq_id in provFSTbl.keys():
+                        provFSTbl[uniq_id] = ProvenanceObj()
                     #Insert the corresponding object into its relevant list (sorted by timestamp)
                     # -- This looks naive but the Manager().Dict() behaves weird when you want to
                     # -- operate on its objects. The only way it works is this:
-                    provenanceObj = provFSTbl[hash_id]
+                    provenanceObj: ProvenanceObj = provFSTbl[uniq_id]
                     provenanceObj.insert_sorted(obj_Q)
-                    provFSTbl[hash_id] = provenanceObj
+                    provFSTbl[uniq_id] = provenanceObj
 
             # Wait if Queue is empty and check the Queue again
             print(provFSTbl)
@@ -151,7 +154,6 @@ class ProvenanceObj(object):
         elif isinstance(dataObj, FileOpObj):
             targetList = self.FileOpObj_lst
             keyList = self.__FileOpObj_keys
-
         else:
             raise AggregatorException("Wrong instance of an object in the Queue")
 

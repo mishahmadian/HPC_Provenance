@@ -13,6 +13,7 @@ from communication import ServerConnection, CommunicationExp
 from config import ServerConfig, ConfigReadExcetion
 from multiprocessing import Process, Queue
 from typing import Dict, List
+import hashlib
 import ctypes
 import json
 
@@ -220,6 +221,12 @@ class MDSDataObj(object):
         # make sure the value is always positive (we don't want negative hash to be used as ID)
         return ctypes.c_size_t(hashVal).value
 
+    # This function returns a unique ID for every objects with the same JobID, Scheduler, and cluster
+    def uniqID(self):
+        obj_id = ''.join([self.sched_type, self.cluster, self.jobid])
+        hash_id = hashlib.md5(obj_id.encode(encoding='UTF=8'))
+        return hash_id.hexdigest()
+
 
 #
 # Object class that holds the process data by "ioStats_OSS_decode".
@@ -253,6 +260,13 @@ class OSSDataObj(object):
         hashVal = hash((self.jobid, self.cluster, self.sched_type))
         # make sure the value is always positive (we don't want negative hash to be used as ID)
         return ctypes.c_size_t(hashVal).value
+
+    # This function returns a unique ID for every objects with the same JobID, Scheduler, and cluster
+    # More reliable over hash function!!
+    def uniqID(self):
+        obj_id = ''.join([self.sched_type, self.cluster, self.jobid])
+        hash_id = hashlib.md5(obj_id.encode(encoding='UTF=8'))
+        return hash_id.hexdigest()
 
 #
 # In case of error the following exception can be raised

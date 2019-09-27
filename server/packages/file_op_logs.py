@@ -17,6 +17,7 @@ from typing import List
 from pprint import pprint
 from math import ceil
 import subprocess
+import hashlib
 import ctypes
 import time
 import os
@@ -214,6 +215,12 @@ class FileOpObj(object):
 
     def setMdtTarget(self, mdtTarget):
         self.mdtTarget = mdtTarget
+
+    # This function returns a unique ID for every objects with the same JobID, Scheduler, and cluster
+    def uniqID(self):
+        obj_id = ''.join([self.sched_type, self.cluster, self.jobid])
+        hash_id = hashlib.md5(obj_id.encode(encoding='UTF=8'))
+        return hash_id.hexdigest()
 
     # Overriding the Hash function for this object
     def __hash__(self):

@@ -35,10 +35,10 @@ class Main_Interface:
 
         # make sure the $PYTHONHASHSEED is disabled otherwise the hash function for each object
         # generates different hash number at each session and will cause a huge mess in database
-        if os.getenv('PYTHONHASHSEED') != '0':
-            print("[ERROR] _MAIN_INTERFACE_: the PYTHONHASHSEED environment variable must be set to '0': \n\n"
-                  "     export PYTHONHASHSEED=0\n")
-            sys.exit(-1)
+        # if os.getenv('PYTHONHASHSEED') != '0':
+        #     print("[ERROR] _MAIN_INTERFACE_: the PYTHONHASHSEED environment variable must be set to '0': \n\n"
+        #           "     export PYTHONHASHSEED=0\n")
+        #     sys.exit(-1)
 
     # Handle the SIGINT and SIGTERM signals in order to shutdown the server
     def server_exit(self, sig, frame):
