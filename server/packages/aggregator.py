@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
     The "aggregator" module containes the main Aggregator class which receives the collected data from agents
     and aggregate them all into a comprehensive and meaningful data to be stored in database or used as a query
@@ -9,9 +10,9 @@ from config import ServerConfig, ConfigReadExcetion
 from multiprocessing import Process, Event, Manager
 from threading import Event as Event_Thr, Thread
 from file_io_stats import MDSDataObj, OSSDataObj
-from typing import Dict, Sequence, List
 from file_op_logs import FileOpObj
 from bisect import bisect_left
+from typing import Dict, List
 import time
 
 #------ Global Variable ------
@@ -99,7 +100,7 @@ class Aggregator(Process):
                     # jobID, Cluster, and SchedType, not mather what type of object are they
                     uniq_id = obj_Q.uniqID()
                     print(uniq_id)
-                    # Ignore None hash IDs
+                    # Ignore None hash IDs (i.e. Procs)
                     if uniq_id is None:
                         continue
                     # if no data has been entered for this JonID_Cluster_SchedType, then create a ProvenanceObj
@@ -131,6 +132,7 @@ class Aggregator(Process):
 
 class ProvenanceObj(object):
     def __init__(self):
+
         self.MDSDataObj_lst: List[MDSDataObj] = []
         self.OSSDataObj_lst: List[OSSDataObj] = []
         self.FileOpObj_lst: List[FileOpObj] = []

@@ -14,6 +14,8 @@ from configparser import ConfigParser
 from typing import Type
 import os
 
+# Global static attributes
+
 #
 # Main class in Config.py that reads and maintains the configuration
 # parameters in memory until the server.config file gets modified
@@ -38,19 +40,41 @@ class ServerConfig:
                   'rabbitmq' : ['server', 'username', 'password'],
                   'io_listener' : ['exchange', 'queue'],
                   'changelogs' : ['parallel','interval', 'users'],
-                  'aggregator' : ['interval', 'timer_intv']}
+                  'aggregator' : ['interval', 'timer_intv'],
+                  'scheduler' : ['types'],
+                  'ugerest*' : ['address', 'port']}
         # Iterate over the Sections in config file
         for section in config.keys():
-            if not self.__parser.has_section(section):
-                raise ConfigReadExcetion("The server.conf does not contain [%s] section" % section)
+            # all the sections with '*' are optional
+            if '*' in section:
+                # skip the '*'
+                section = section[:-1]
+                # if the optional section was not provided then continue
+                if not self.__parser.has_section(section):
+                    continue
+            # Else the section is mandatory for configuration
+            else:
+                if not self.__parser.has_section(section):
+                    raise ConfigReadExcetion("The server.conf does not contain [%s] section" % section)
+
             # Iterate over options under each section of the config file
             for option in config[section]:
-                if not self.__parser.has_option(section, option):
-                    raise ConfigReadExcetion("The '%s' is missing under [%s] section in server.conf" \
-                                                % (option, section))
+                # all the options with '*' are optional
+                if '*' in option:
+                    # skip the '*'
+                    option = option[:-1]
+                    # if optional 'option' is not available then continue
+                    if not self.__parser.has_option(section, option):
+                        continue
+                # the mandatory option should be provided
+                else:
+                    # make sure the mandatory option is provided
+                    if not self.__parser.has_option(section, option):
+                        raise ConfigReadExcetion("The '%s' is missing under [%s] section in server.conf" \
+                                                    % (option, section))
 
     # Check if config file has been modified since last time
-    def __isCondigFileModified(self):
+    def isConfigFileModified(self):
         # Check Modification time
         m_stamp = os.stat(self.__filepath).st_mtime
         if m_stamp != self.__cached_stamp:
@@ -68,7 +92,7 @@ class ServerConfig:
             raise ConfigReadExcetion("The config file (server.conf) does not exist")
         # Load the config file if it's been changed so far. Otherwise, keep the
         # file content in memory. the first time it will load the file in memory.
-        if self.__isCondigFileModified():
+        if self.isConfigFileModified():
             # Read the server.conf file and parse it
             self.__parser.read(self.__filepath)
             # Validate the sections and options
@@ -77,29 +101,32 @@ class ServerConfig:
             return True
         return False
 
-    def __getConfigValue(self, section: str, key: str, retType: Type):
-        attrName = section + '_' + key
+    def __getConfigValue(self, section: str, option: str, retType: Type):
+        attrName = section + '_' + option
         # Check if the value has been changed or is not available in this object yet
         # if so, then create it:
         if self.__loadConfigFile() or not hasattr(self, attrName):
+            # in case that option is not mandatory and does not exist, then return None
+            if not self.__parser.has_option(section, option):
+                return None
             # If the value type should be a list
             if retType is list:
-                # convert comma separated values of an specific key of specific section to List of values
-                tempList = [value.strip() for value in self.__parser.get(section, key).split(',')]
+                # convert comma separated values of an specific option of specific section to List of values
+                tempList = [value.strip() for value in self.__parser.get(section, option).split(',')]
                 setattr(self, attrName, tempList)
 
             # If the value type should be either Integer or Float
             elif retType is int or retType is float:
                 try:
-                    tempVal = retType(self.__parser.get(section, key))
+                    tempVal = retType(self.__parser.get(section, option))
                     setattr(self, attrName, tempVal)
                 except ValueError:
                     raise ConfigReadExcetion("The '{}' parameter under [{}] section must be numeric type of {}"
-                                             .format(key, section, retType.__name__))
+                                             .format(option, section, retType.__name__))
 
             # If the value type should be a String
             elif retType is str:
-                tempStr = self.__parser.get(section, key)
+                tempStr = self.__parser.get(section, option)
                 setattr(self, attrName, tempStr)
 
         # Anyway, return the requested value
@@ -181,6 +208,21 @@ class ServerConfig:
     # Return: Float
     def getAggrTimer(self) -> float:
         return self.__getConfigValue('aggregator', 'timer_intv', float)
+
+    # Get UGE_REST API address
+    # return String
+    def getUGERestAddr(self) -> str:
+        return self.__getConfigValue('ugerest', 'address', str)
+
+    # Get UGE_REST API port
+    # return String
+    def getUGERestPort(self) -> str:
+        return self.__getConfigValue('ugerest', 'port', str)
+
+    # Get the list of all available Job Schedulers
+    # Return: List
+    def getSchedulersList(self) -> list:
+        return self.__getConfigValue('scheduler', 'types', list)
 
 
 #

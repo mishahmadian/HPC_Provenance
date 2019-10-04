@@ -218,6 +218,10 @@ class FileOpObj(object):
 
     # This function returns a unique ID for every objects with the same JobID, Scheduler, and cluster
     def uniqID(self):
+        if self.procid:
+            # No hash for this object if jobID is not defined
+            return None
+        # calculate the MD5 hash
         obj_id = ''.join([self.sched_type, self.cluster, self.jobid])
         hash_id = hashlib.md5(obj_id.encode(encoding='UTF=8'))
         return hash_id.hexdigest()

@@ -298,6 +298,52 @@ from typing import Dict
 
 import json, urllib.request
 
-r = urllib.request.urlopen("http://10.102.14.17:8182/jobs/79")
-data = json.loads(r.read().decode(r.info().get_param('charset') or 'utf-8'))
-print(json.dumps(data, sort_keys=True, indent=4))
+#r = urllib.request.urlopen("http://10.102.14.17:8182/jobs/79")
+#data = json.loads(r.read().decode(r.info().get_param('charset') or 'utf-8'))
+#print(json.dumps(data, sort_keys=True, indent=4))
+import multiprocessing
+
+def inProcFunc():
+    myId = multiprocessing.current_process().pid
+    print("Inner started: " + str(myId))
+    time.sleep(5)
+    print("Inner finished: " + str(myId))
+
+def procFunc():
+    innerProc = None
+    myId = multiprocessing.current_process().pid
+    print("I started: " + str(myId))
+    try:
+        innerProc = Process(target=inProcFunc)
+        innerProc.start()
+    finally:
+        innerProc.terminate()
+        innerProc.join()
+    time.sleep(5)
+    print("I finished: " + str(myId))
+
+procLst = []
+while False:
+    try:
+        myProc = Process(target=procFunc)
+        procLst.append(myProc)
+        myProc.daemon = False
+        myProc.start()
+        time.sleep(3)
+    except KeyboardInterrupt:
+        print("I'm done")
+        for proc in procLst:
+            proc.terminate()
+        break
+
+from enum import Enum
+class enumTest:
+    class inner(Enum):
+        MISHA = 1
+        AHMADIAN = 2
+
+    def testMe(self, val):
+        print(enumTest.inner(val))
+
+myEnumObj = enumTest()
+myEnumObj.testMe(2)

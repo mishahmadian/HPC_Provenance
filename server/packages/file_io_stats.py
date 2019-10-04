@@ -59,21 +59,15 @@ class IOStatsListener(Process):
         # Check whether the IO stat data comes from MDS or OSS.
         # Then choose the proper function
         if io_stat_map["server"] in self.__MDS_hosts:
-            #print("I'm here 1_MDS")
             # Then data should be processed for MDS
             mdsStatObjLst = self.__parseIoStats_mds(io_stat_map)
-            #print("I'm here 2_MDS")
             # Put mdsStatObjLst into the MSDStat_Q
-            #==for mdsStatObj in mdsStatObjLst:
             self.MSDStat_Q.put(mdsStatObjLst)
 
         elif io_stat_map["server"] in self.__OSS_hosts:
             # Parse the OSS IO stats
-            #print("I'm here 1_OSS")
             ossStatObjLst = self.__parseIoStats_oss(io_stat_map)
-            #print("I'm here 2_OSS")
             # Put ossStatObjs into OSSStat_Q
-            #==for ossStatObj in ossStatObjLst:
             self.OSSStat_Q.put(ossStatObjLst)
         else:
             # Otherwise the data should be processed for OSS
@@ -90,8 +84,10 @@ class IOStatsListener(Process):
         serverHost = data["server"]
         # Filter out a group of received JobStats of different jobs
         jobstatLst = data["output"].split("job_stats:")
-        # drop the first element because its always empty
+        # drop the first element because its always useless
         del jobstatLst[0]
+        # Split jobs in JobStat list by '-' and skip the first element which is empty
+        jobstatLst = jobstatLst[0].split('-')[1:]
         # Iterate over the jobstatLst
         for jobstat in jobstatLst:
             # Create new MDSDataObj
@@ -101,16 +97,22 @@ class IOStatsListener(Process):
             # The host name of the server
             mdsObj.mds_host = serverHost
             # Parse the JobStat output line by line
-            for line in data["output"].splitlines():
+            for line in jobstat.splitlines():
                 # skip empty lines
                 if not line.strip():
                     continue
                 # First column of each line is the attribute
                 attr = line.split(':')[0].strip()
-                # extract the job_id value which is like: $CLUSTER_SCHED_$JOBID
+                # extract the job_id value which
                 if "job_id" in attr:
-                    mdsObj.cluster, mdsObj.sched_type, mdsObj.jobid = \
-                                       line.split(':')[1].strip().split('_')
+                    # get the id
+                    jobid = line.split(':')[1].strip()
+                    # if the id format is not compatible with "cluster_scheduler_ID" then it's a process id
+                    if '_' in jobid:
+                        mdsObj.procid = jobid
+                    # Otherwise, it is a JOB
+                    else:
+                        mdsObj.cluster, mdsObj.sched_type, mdsObj.jobid = jobid.split('_')
                 # Snapshot from Lustre reports
                 elif "snapshot_time" in attr:
                     mdsObj.snapshot_time = line.split(':')[1].strip()
@@ -138,8 +140,10 @@ class IOStatsListener(Process):
         serverHost = data["server"]
         # Filter out a group of received JobStats of different jobs
         jobstatLst = data["output"].split("job_stats:")
-        # drop the first element because its always empty
+        # drop the first element because its always useless
         del jobstatLst[0]
+        # Split jobs in JobStat list by '-' and skip the first element which is empty
+        jobstatLst = jobstatLst[0].split('-')[1:]
         # Iterate over the jobStatLst
         for jobstat in jobstatLst:
             # Create new OSSDataObj
@@ -149,7 +153,7 @@ class IOStatsListener(Process):
             # The host name of the server
             ossObj.oss_host = serverHost
             # Parse the JobStat output line by line
-            for line in data["output"].splitlines():
+            for line in jobstat.splitlines():
                 # skip empty lines
                 if not line.strip():
                     continue
@@ -157,8 +161,14 @@ class IOStatsListener(Process):
                 attr = line.split(':')[0].strip()
                 # extract the job_id value which is like: $CLUSTER_SCHED_$JOBID
                 if "job_id" in attr:
-                    ossObj.cluster, ossObj.sched_type, ossObj.jobid = \
-                                       line.split(':')[1].strip().split('_')
+                    # get the id
+                    jobid = line.split(':')[1].strip()
+                    # if the id format is not compatible with "cluster_scheduler_ID" then it's a process id
+                    if '_' in jobid:
+                        ossObj.procid = jobid
+                    # Otherwise, it is a JOB
+                    else:
+                        ossObj.cluster, ossObj.sched_type, ossObj.jobid = jobid.split('_')
                 # Snapshot from Lustre reports
                 elif "snapshot_time" in attr:
                     ossObj.snapshot_time = line.split(':')[1].strip()
@@ -200,6 +210,7 @@ class MDSDataObj(object):
         self.jobid = None
         self.cluster = None
         self.sched_type = None
+        self.procid = None
         self.snapshot_time = 0
         self.open = 0
         self.close = 0
@@ -239,6 +250,7 @@ class OSSDataObj(object):
         self.jobid = None
         self.cluster = None
         self.sched_type = None
+        self.procid = None
         self.snapshot_time = 0
         self.read_bytes = 0
         self.read_bytes_min = 0
@@ -264,6 +276,10 @@ class OSSDataObj(object):
     # This function returns a unique ID for every objects with the same JobID, Scheduler, and cluster
     # More reliable over hash function!!
     def uniqID(self):
+        if self.procid:
+            # No hash for this object if jobID is not defined
+            return None
+        # calculate the MD5 hash
         obj_id = ''.join([self.sched_type, self.cluster, self.jobid])
         hash_id = hashlib.md5(obj_id.encode(encoding='UTF=8'))
         return hash_id.hexdigest()
