@@ -11,11 +11,6 @@ from config import ServerConfig, ConfigReadExcetion
 import json, urllib.request
 
 class UGE:
-    def __init__(self):
-        self.config = ServerConfig()
-        try:
-            # Get the list of all available schedulers
-            self.__schedulerList = self.config.getSchedulersList()
-
-        except ConfigReadExcetion as confExp:
-            print(confExp.getMessage())
+    @staticmethod
+    def getUGEJobInfo(config, cluster, iobId):
+        pass

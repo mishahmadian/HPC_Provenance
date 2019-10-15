@@ -345,5 +345,4 @@ class enumTest:
     def testMe(self, val):
         print(enumTest.inner(val))
 
-myEnumObj = enumTest()
-myEnumObj.testMe(2)
+

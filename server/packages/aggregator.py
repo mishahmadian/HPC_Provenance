@@ -55,6 +55,7 @@ class Aggregator(Process):
             procList: List[Process] = []
             # Create a shard Dictionary object which allows three process to update their values
             provFSTbl = Manager().dict()
+            Manager().list()
             # reset the Times Up signal for all process
             self.timesUp.clear()
             # Aggregate MDS IO Stats into the Provenance Table

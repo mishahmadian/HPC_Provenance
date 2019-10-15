@@ -16,9 +16,18 @@ class JobScheduler:
         try:
             # Get the list of all available schedulers
             self.__schedulerList = self.config.getSchedulersList()
+
+            for sched in self.__schedulerList:
+                # Check and see if the scheduler type defined in server.conf is valid
+                # More supported schedulers can added here later
+                if sched != "uge":
+                    raise JobSchedulerExcetion("The Scheduler type [" + sched + "] is invalid")
             
         except ConfigReadExcetion as confExp:
             print(confExp.getMessage())
+
+    def getJobInfo(self, cluster, scheduler, jobId):
+        pass
 
 # The Super class for all type of JobInfo objects which contains the necessary attributes
 class JobInfo(object):
@@ -51,3 +60,14 @@ class UGEJobInfo(JobInfo):
         self.h_vmem = None
         self.parallelEnv = None
         self.project = None
+
+#
+# In any case of Error, Exception, or Mistake JobSchedulerExcetion will be raised
+#
+class JobSchedulerExcetion(Exception):
+    def __init__(self, message):
+        super(JobSchedulerExcetion, self).__init__(message)
+        self.message = "\n [Error] _JOB_SCHED_: " + message + "\n"
+
+    def getMessage(self):
+        return self.message

@@ -112,7 +112,7 @@ class ServerConfig:
             # If the value type should be a list
             if retType is list:
                 # convert comma separated values of an specific option of specific section to List of values
-                tempList = [value.strip() for value in self.__parser.get(section, option).split(',')]
+                tempList = [value.strip().lower() for value in self.__parser.get(section, option).split(',')]
                 setattr(self, attrName, tempList)
 
             # If the value type should be either Integer or Float
@@ -127,7 +127,7 @@ class ServerConfig:
             # If the value type should be a String
             elif retType is str:
                 tempStr = self.__parser.get(section, option)
-                setattr(self, attrName, tempStr)
+                setattr(self, attrName, tempStr.lower())
 
         # Anyway, return the requested value
         return getattr(self, attrName)
