@@ -78,20 +78,22 @@ class ChangeLogCollector(Process):
                 pool.close()
                 pool.join()
 
-                # Put the list of File Operations info in the main Queue which is shared with Aggregator
-                self.fileOP_Q.put(fileOpObj_Lst)
+                # There is a chance that fileOpObj_Lst might be empty if all the records have no "j="
+                if fileOpObj_Lst:
+                    # Put the list of File Operations info in the main Queue which is shared with Aggregator
+                    self.fileOP_Q.put(fileOpObj_Lst)
 
-                # corresponding user to this MDT Target:
-                user = self.__chLogUsers[inx]
-                # last rec# defines the last record than should be cleared up to.
-                # The last object in the list holds the last Rec#
-                endRecNum = fileOpObj_Lst[-1].recID
-                # Keep the endRecNum in array cell corresponding to the MDT Targets index
-                lastCapturedRec[inx] = int(endRecNum)
-                # Clear off the ChangeLogs (optimization)
-                ###self.__clearChangeLogs(mdtTarget, user, endRecId)
+                    # corresponding user to this MDT Target:
+                    user = self.__chLogUsers[inx]
+                    # last rec# defines the last record than should be cleared up to.
+                    # The last object in the list holds the last Rec#
+                    endRecNum = fileOpObj_Lst[-1].recID
+                    # Keep the endRecNum in array cell corresponding to the MDT Targets index
+                    lastCapturedRec[inx] = int(endRecNum)
+                    # Clear off the ChangeLogs (optimization)
+                    ###self.__clearChangeLogs(mdtTarget, user, endRecId)
 
-                #pprint(vars(fileOpObj_Lst[-1]))
+                    #pprint(vars(fileOpObj_Lst[-1]))
 
             # wait between collecting ChangeLogs
             self.event_flag.wait(self.__interval)
@@ -192,7 +194,7 @@ class FileOpObj(object):
                                                            shell=True, stderr=nullDev).decode("utf-8").strip()
         except subprocess.CalledProcessError:
             # The file has been removed already and the fid is invalid
-            self.target_path = "-1"
+            self.target_path = "File Not Exist"
 
     def setUserInfo(self, userinfo):
         self.uid, self.gid = userinfo.strip().split('=')[1].split(':')
@@ -208,7 +210,7 @@ class FileOpObj(object):
                                                            shell=True, stderr=nullDev).decode("utf-8").strip()
         except subprocess.CalledProcessError:
             # The file has been removed already and the fid is invalid
-            self.parent_path = "-1"
+            self.parent_path = "File Not Exist"
 
     def setTargetFile(self, name):
         self.target_file = name.strip()

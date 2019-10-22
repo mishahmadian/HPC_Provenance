@@ -13,7 +13,9 @@ from file_io_stats import MDSDataObj, OSSDataObj
 from file_op_logs import FileOpObj
 from bisect import bisect_left
 from typing import Dict, List
+from tabulate import tabulate
 import time
+import os
 
 #------ Global Variable ------
 # Timer Value
@@ -50,7 +52,6 @@ class Aggregator(Process):
         while not self.event_flag.is_set():
             # Record the current timestamp
             self.currentTime = time.time()
-            print("========= Start aggregating:")
             # a list of Processes
             procList: List[Process] = []
             # Create a shard Dictionary object which allows three process to update their values
@@ -74,14 +75,15 @@ class Aggregator(Process):
             # wait for all processes to finish
             for proc in procList:
                 proc.join()
-            print("========= End aggregating:")
-            if provFSTbl:
-                for key, valuObj in provFSTbl.items():
+            #if provFSTbl:
+            #    for key, valuObj in provFSTbl.items():
                     #print(" key id: " + str(key))
                     #print(" --MDS_keys:" + str(valuObj.__MDSDataObj_keys))
                     #print(" --OSS_keys:" + str(valuObj.__OSSDataObj_keys))
                     #print(" --FileOps_keys:" + str(valuObj.FileOpObj_keys))
-                    pass
+            #        pass
+            if len(provFSTbl):
+                self.__tableView(provFSTbl)
 
         # Terminate timer after flag is set
         timer_flag.set()
@@ -92,7 +94,7 @@ class Aggregator(Process):
         while not self.timesUp.is_set():
             # all the MSDStat_Q, OSSStat_Q, and fileOP_Q are assumed as allFS_Q
             if not allFS_Q.empty():
-                print(provFSTbl)
+                #print(provFSTbl)
                 # Get the list of objects from each queue one by one
                 obj_List = allFS_Q.get()
                 # extract objects from obj_List which can be either MDSDataObj, OSSDataObj, or FileOpObj type
@@ -100,7 +102,7 @@ class Aggregator(Process):
                     # the uniqID function for each object in the queue should be the same for the same
                     # jobID, Cluster, and SchedType, not mather what type of object are they
                     uniq_id = obj_Q.uniqID()
-                    print(uniq_id)
+                    #print(uniq_id)
                     # Ignore None hash IDs (i.e. Procs)
                     if uniq_id is None:
                         continue
@@ -116,9 +118,63 @@ class Aggregator(Process):
                     provFSTbl[uniq_id] = provenanceObj
 
             # Wait if Queue is empty and check the Queue again
-            print(provFSTbl)
+            #print(provFSTbl)
             self.timesUp.wait(1)
 
+
+    @staticmethod
+    def __tableView(provFSTbl):
+        for objs in provFSTbl.values():
+            mdsLst = objs.MDSDataObj_lst
+            # MDS
+            if mdsLst:
+                mdsObj = mdsLst[-1]
+                mdsTbl = []
+                for attr in [atr for atr in dir(mdsObj) if (not atr.startswith('__'))
+                                                          and (not callable(getattr(mdsObj, atr)))]:
+                    mdsTbl.append([attr, getattr(mdsObj, attr)])
+
+                with open("../outputs/mds.o" + objs.jobid, "w") as fmds:
+                    fmds.write(tabulate(mdsTbl, headers=["Attribute:", "Value:"], tablefmt="github") + "\n")
+
+            # OSS
+            ossLst = objs.OSSDataObj_lst
+            if ossLst:
+                ossobj = ossLst[-1]
+                ossTbl = []
+                for attr in [atr for atr in dir(ossobj) if (not atr.startswith('__'))
+                                                          and (not callable(getattr(ossobj, atr)))]:
+                    ossTbl.append([attr, getattr(ossobj, attr)])
+
+                if ossobj.oss_host == "oss1":
+                    with open("../outputs/oss1.o" + objs.jobid, "w") as foss1:
+                        foss1.write(tabulate(ossTbl, headers=["Attribute:", "Value:"], tablefmt="github") + "\n")
+                else:
+                    with open("../outputs/oss2.o" + objs.jobid, "w") as foss2:
+                        foss2.write(tabulate(ossTbl, headers=["Attribute:", "Value:"], tablefmt="github") + "\n")
+
+             # ChangeLogs:
+            """
+                        if not os.path.exists("../outputs/fileOP.o"):
+                with open("../outputs/fileOP.o" + objs.jobid, "w") as fchlog:
+                    fchlog.write("JobID : [{}]\n".format(objs.jobid))
+                    fchlog.write(tabulate([], headers=["File", "Operation", "Parent", "Timestamp", "MDT Target"],
+                                                                                                tablefmt="github"))
+                    #fchlog.close()
+
+            """
+
+            flogLst = objs.FileOpObj_lst
+            if flogLst:
+                flogTbl = []
+                for flogObj in flogLst:
+                    parent = flogObj.parent_path
+                    if not parent:
+                        parent = "----"
+                    flogTbl.append([flogObj.target_path, flogObj.op_type, parent, flogObj.timestamp, flogObj.mdtTarget])
+
+                with open("../outputs/fileOP.o" + objs.jobid, "a") as fchlog:
+                    fchlog.write(tabulate(flogTbl, tablefmt="plain") + "\n")
 
 
     # Timer function to be used in a thread inside this process
@@ -133,7 +189,7 @@ class Aggregator(Process):
 
 class ProvenanceObj(object):
     def __init__(self):
-
+        self.jobid = None
         self.MDSDataObj_lst: List[MDSDataObj] = []
         self.OSSDataObj_lst: List[OSSDataObj] = []
         self.FileOpObj_lst: List[FileOpObj] = []
@@ -145,6 +201,7 @@ class ProvenanceObj(object):
     # objects and uses the timestamp attribute as the key to sort them while
     # appending them their corresponding list
     def insert_sorted(self, dataObj):
+        self.jobid = dataObj.jobid
         # select timestamp as the key
         key = float(dataObj.timestamp)
         # define the corresponding list

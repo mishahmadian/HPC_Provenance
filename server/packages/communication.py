@@ -35,7 +35,7 @@ class ServerConnection:
         try:
             return BlockingConnection(self.__params)
 
-        except (exceptions.ConnectionClosedByBroker, exceptions.AMQPConnectionError,
+        except (exceptions.ConnectionClosed, exceptions.AMQPConnectionError,
                 exceptions.AMQPError) as amqExp:
             raise CommunicationExp("Connection was not established. {}".format(amqExp),
                                     CommunicationExp.Type.AMQP_CONN)
@@ -81,7 +81,7 @@ class ServerConnection:
         # RabbitMQ will deliver another one.
         channel.basic_qos(prefetch_count=1)
         # Set basic consumer with a "callback" function
-        channel.basic_consume(callback, queue=queue, no_ack=True)
+        channel.basic_consume(queue=queue, on_message_callback=callback, auto_ack=True)
         # Start consuming: Listening to the channel and collecting the
         # incoming IO stats from agents
         channel.start_consuming()

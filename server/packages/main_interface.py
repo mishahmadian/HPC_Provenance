@@ -56,12 +56,12 @@ class Main_Interface:
             self.IOStatsLsn_Proc.start()
 
             # File Operation Log collector Process
-            #self.fileOPStats_Proc = ChangeLogCollector(fileOP_Q)
-            #self.fileOPStats_Proc.start()
+            self.fileOPStats_Proc = ChangeLogCollector(fileOP_Q)
+            self.fileOPStats_Proc.start()
 
             # Aggregator Process
-            #self.aggregator_Proc = Aggregator(MSDStat_Q, OSSStat_Q, fileOP_Q)
-            #self.aggregator_Proc.start()
+            self.aggregator_Proc = Aggregator(MSDStat_Q, OSSStat_Q, fileOP_Q)
+            self.aggregator_Proc.start()
 
             while True:
                 sleep(0.5)

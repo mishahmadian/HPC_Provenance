@@ -345,4 +345,24 @@ class enumTest:
     def testMe(self, val):
         print(enumTest.inner(val))
 
+import types
+from inspect import isfunction
+class MyObject:
+    def __init__(self):
+        self.id = "123"
+        self.name = "misha"
+        self.lastname = "ahmadian"
+
+    def test(self):
+        pass
+
+myobj = MyObject()
+
+for attr in [atr for atr in dir(myobj) if (not atr.startswith('__'))
+                                          and (not callable(getattr(myobj, atr)))]:
+    #print(attr + " --> " + str(getattr(myobj, attr)))
+    pass
+
+lfs_comm = subprocess.check_output("lfs changelog test-MDT0000 1", shell=True).decode("utf-8")
+print(lfs_comm)
 

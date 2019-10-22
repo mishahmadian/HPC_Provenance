@@ -58,7 +58,7 @@ class IOStatsListener(Process):
         io_stat_map = json.loads(body.decode("utf-8"))
         # Check whether the IO stat data comes from MDS or OSS.
         # Then choose the proper function
-        if io_stat_map["server"] in self.__MDS_hosts:
+        if io_stat_map["server"] in self.__MDS_hosts:\
             # Then data should be processed for MDS
             mdsStatObjLst = self.__parseIoStats_mds(io_stat_map)
             # Put mdsStatObjLst into the MSDStat_Q
@@ -108,7 +108,7 @@ class IOStatsListener(Process):
                     # get the id
                     jobid = line.split(':')[1].strip()
                     # if the id format is not compatible with "cluster_scheduler_ID" then it's a process id
-                    if '_' in jobid:
+                    if '_' not in jobid:
                         mdsObj.procid = jobid
                     # Otherwise, it is a JOB
                     else:
@@ -126,6 +126,7 @@ class IOStatsListener(Process):
                     setattr(mdsObj, attr, value)
 
             # Put the mdsObj into a list
+            print("{} : {}".format(serverHost, mdsObj.jobid))
             mdsObjLst.append(mdsObj)
         # Return the JobStat output in form of MDSDataObj data type
         return mdsObjLst
@@ -164,7 +165,7 @@ class IOStatsListener(Process):
                     # get the id
                     jobid = line.split(':')[1].strip()
                     # if the id format is not compatible with "cluster_scheduler_ID" then it's a process id
-                    if '_' in jobid:
+                    if '_' not in jobid:
                         ossObj.procid = jobid
                     # Otherwise, it is a JOB
                     else:
@@ -195,6 +196,7 @@ class IOStatsListener(Process):
                     setattr(ossObj, attr, value)
 
             # Put the ossObj into a list
+            print("{} : {}".format(serverHost, ossObj.jobid))
             ossObjLst.append(ossObj)
         # Rerun the JobStat output in form of OSSDataObj data type
         return ossObjLst

@@ -45,33 +45,35 @@ class ServerConfig:
                   'ugerest*' : ['address', 'port']}
         # Iterate over the Sections in config file
         for section in config.keys():
+            isection = section
             # all the sections with '*' are optional
             if '*' in section:
                 # skip the '*'
-                section = section[:-1]
+                isection = section[:-1]
                 # if the optional section was not provided then continue
-                if not self.__parser.has_section(section):
+                if not self.__parser.has_section(isection):
                     continue
             # Else the section is mandatory for configuration
             else:
-                if not self.__parser.has_section(section):
-                    raise ConfigReadExcetion("The server.conf does not contain [%s] section" % section)
+                if not self.__parser.has_section(isection):
+                    raise ConfigReadExcetion("The server.conf does not contain [%s] section" % isection)
 
             # Iterate over options under each section of the config file
             for option in config[section]:
+                ioption = option
                 # all the options with '*' are optional
                 if '*' in option:
                     # skip the '*'
-                    option = option[:-1]
+                    ioption = option[:-1]
                     # if optional 'option' is not available then continue
-                    if not self.__parser.has_option(section, option):
+                    if not self.__parser.has_option(isection, ioption):
                         continue
                 # the mandatory option should be provided
                 else:
                     # make sure the mandatory option is provided
-                    if not self.__parser.has_option(section, option):
+                    if not self.__parser.has_option(isection, ioption):
                         raise ConfigReadExcetion("The '%s' is missing under [%s] section in server.conf" \
-                                                    % (option, section))
+                                                    % (ioption, isection))
 
     # Check if config file has been modified since last time
     def isConfigFileModified(self):
@@ -112,7 +114,7 @@ class ServerConfig:
             # If the value type should be a list
             if retType is list:
                 # convert comma separated values of an specific option of specific section to List of values
-                tempList = [value.strip().lower() for value in self.__parser.get(section, option).split(',')]
+                tempList = [value.strip() for value in self.__parser.get(section, option).split(',')]
                 setattr(self, attrName, tempList)
 
             # If the value type should be either Integer or Float
@@ -127,7 +129,7 @@ class ServerConfig:
             # If the value type should be a String
             elif retType is str:
                 tempStr = self.__parser.get(section, option)
-                setattr(self, attrName, tempStr.lower())
+                setattr(self, attrName, tempStr.strip())
 
         # Anyway, return the requested value
         return getattr(self, attrName)
@@ -156,8 +158,8 @@ class ServerConfig:
 
     # Get the name of the port number of the RabbitMQ-Server
     # Return: String
-    def getPort(self) -> str:
-        return str(self.__getConfigValue('rabbitmq', 'port', int))
+    def getPort(self) -> int:
+        return int(self.__getConfigValue('rabbitmq', 'port', int))
 
     # Get the username of RabbitMQ-Server
     # Return: String

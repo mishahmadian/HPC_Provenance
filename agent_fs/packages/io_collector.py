@@ -131,7 +131,7 @@ class PublishIOstats(Thread):
     # to a reliable NTP server
     def __get_ntp_time(self):
         ntp = NTPClient()
-        ntp_server = self.config.getNTPServer()
+        ntp_server = None #self.config.getNTPServer()
         try:
             response = ntp.request(ntp_server)
             return response.tx_time
