@@ -11,6 +11,7 @@
 """
 from communication import ServerConnection, CommunicationExp
 from config import ServerConfig, ConfigReadExcetion
+from exceptions import ProvenanceExitExp
 from multiprocessing import Process, Queue
 from typing import Dict, List
 import hashlib
@@ -49,7 +50,11 @@ class IOStatsListener(Process):
         except CommunicationExp as commExp:
             print(commExp.getMessage())
 
+        except ProvenanceExitExp:
+            pass
+
         except Exception as exp:
+            print("Hooolllloooow")
             print(str(exp))
 
     # This function will be triggered as soon as RabbitMQ receives data from
@@ -58,7 +63,7 @@ class IOStatsListener(Process):
         io_stat_map = json.loads(body.decode("utf-8"))
         # Check whether the IO stat data comes from MDS or OSS.
         # Then choose the proper function
-        if io_stat_map["server"] in self.__MDS_hosts:\
+        if io_stat_map["server"] in self.__MDS_hosts:
             # Then data should be processed for MDS
             mdsStatObjLst = self.__parseIoStats_mds(io_stat_map)
             # Put mdsStatObjLst into the MSDStat_Q

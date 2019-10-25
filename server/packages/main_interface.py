@@ -15,6 +15,7 @@ from aggregator import Aggregator, AggregatorException
 from file_op_logs import ChangeLogCollector
 from communication import CommunicationExp
 from config import ConfigReadExcetion
+from exceptions import ProvenanceExitExp
 from multiprocessing import Queue
 from time import sleep, ctime
 import signal, sys, os
@@ -63,6 +64,8 @@ class Main_Interface:
             self.aggregator_Proc = Aggregator(MSDStat_Q, OSSStat_Q, fileOP_Q)
             self.aggregator_Proc.start()
 
+            self.IOStatsLsn_Proc.join()
+
             while True:
                 sleep(0.5)
                 #if not self.fileOPStats_Proc.is_alive() or not self.IOStatsLsn_Proc.is_alive() or not self.aggregator_Proc.is_alive():
@@ -92,7 +95,8 @@ class Main_Interface:
                 self.IOStatsLsn_Proc.join()
 
             if not self.aggregator_Proc is None:
-                self.aggregator_Proc.terminate()
+                #self.aggregator_Proc.terminate()
+                self.aggregator_Proc.event_flag.set()
                 self.aggregator_Proc.join()
 
             if not self.fileOPStats_Proc is None:
@@ -101,11 +105,6 @@ class Main_Interface:
 
             print("Done!")
 
-#
-#  Exception will be raised when SIGINT or SIGTERM are called
-#
-class ProvenanceExitExp(Exception):
-    pass
 
 #
 # Main

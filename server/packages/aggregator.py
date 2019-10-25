@@ -10,6 +10,7 @@ from config import ServerConfig, ConfigReadExcetion
 from multiprocessing import Process, Event, Manager
 from threading import Event as Event_Thr, Thread
 from file_io_stats import MDSDataObj, OSSDataObj
+from exceptions import ProvenanceExitExp
 from file_op_logs import FileOpObj
 from bisect import bisect_left
 from typing import Dict, List
@@ -42,84 +43,99 @@ class Aggregator(Process):
 
     # Implement Process.run()
     def run(self):
-        # Create a Timer Thread to be running for this process and change the
-        # "timer_val" value every
-        timer_flag = Event_Thr()
-        timer = Thread(target=self.__timer, args=(timer_flag, self.__timerIntv,))
-        timer.setDaemon(True)
-        #==timer.start()
+        try:
+            # Create a Timer Thread to be running for this process and change the
+            # "timer_val" value every
+            timer_flag = Event_Thr()
+            timer = Thread(target=self.__timer, args=(timer_flag, self.__timerIntv,))
+            timer.setDaemon(True)
+            #==timer.start()
 
-        while not self.event_flag.is_set():
-            # Record the current timestamp
-            self.currentTime = time.time()
-            # a list of Processes
-            procList: List[Process] = []
-            # Create a shard Dictionary object which allows three process to update their values
-            provFSTbl = Manager().dict()
-            Manager().list()
-            # reset the Times Up signal for all process
-            self.timesUp.clear()
-            # Aggregate MDS IO Stats into the Provenance Table
-            procList.append(Process(target=self.__aggregate2Dict, args=(provFSTbl, self.MSDStat_Q,)))
-            # Aggregate OSS IO Stats into the Provenance Table
-            procList.append(Process(target=self.__aggregate2Dict, args=(provFSTbl, self.OSSStat_Q,)))
-            # Aggregate File Operations into the Provenance Table
-            procList.append(Process(target=self.__aggregate2Dict, args=(provFSTbl, self.fileOP_Q,)))
-            # Start all the aggregator processes:
-            for proc in procList:
-                proc.start()
-            # Keep the time interval
-            self.event_flag.wait(self.__interval)
-            # stop the processes for this interval
+            while not self.event_flag.is_set():
+                # Record the current timestamp
+                self.currentTime = time.time()
+                # a list of Processes
+                procList: List[Process] = []
+                # Create a shard Dictionary object which allows three process to update their values
+                provFSTbl = Manager().dict()
+                Manager().list()
+                # reset the Times Up signal for all process
+                self.timesUp.clear()
+                # Aggregate MDS IO Stats into the Provenance Table
+                procList.append(Process(target=self.__aggregate2Dict, args=(provFSTbl, self.MSDStat_Q,)))
+                # Aggregate OSS IO Stats into the Provenance Table
+                procList.append(Process(target=self.__aggregate2Dict, args=(provFSTbl, self.OSSStat_Q,)))
+                # Aggregate File Operations into the Provenance Table
+                procList.append(Process(target=self.__aggregate2Dict, args=(provFSTbl, self.fileOP_Q,)))
+
+                # Start all the aggregator processes:
+                for proc in procList:
+                    proc.daemon = True
+                    proc.start()
+                # Keep the time interval
+                self.event_flag.wait(self.__interval)
+                # stop the processes for this interval
+                self.timesUp.set()
+                # wait for all processes to finish
+                for proc in procList:
+                    proc.join()
+
+                #if provFSTbl:
+                #    for key, valuObj in provFSTbl.items():
+                        #print(" key id: " + str(key))
+                        #print(" --MDS_keys:" + str(valuObj.__MDSDataObj_keys))
+                        #print(" --OSS_keys:" + str(valuObj.__OSSDataObj_keys))
+                        #print(" --FileOps_keys:" + str(valuObj.FileOpObj_keys))
+                #        pass
+                if len(provFSTbl):
+                    self.__tableView(provFSTbl)
+
+            # Terminate timer after flag is set
+            timer_flag.set()
+
+        except ProvenanceExitExp:
+            pass
+
+        finally:
             self.timesUp.set()
-            # wait for all processes to finish
-            for proc in procList:
-                proc.join()
-            #if provFSTbl:
-            #    for key, valuObj in provFSTbl.items():
-                    #print(" key id: " + str(key))
-                    #print(" --MDS_keys:" + str(valuObj.__MDSDataObj_keys))
-                    #print(" --OSS_keys:" + str(valuObj.__OSSDataObj_keys))
-                    #print(" --FileOps_keys:" + str(valuObj.FileOpObj_keys))
-            #        pass
-            if len(provFSTbl):
-                self.__tableView(provFSTbl)
 
-        # Terminate timer after flag is set
-        timer_flag.set()
 
     # Aggregate and map all the MDS IO status data to a set of unique objects based on Job ID
     def __aggregate2Dict(self, provFSTbl: Dict, allFS_Q):
-        # Fill the provFSTbl dictionary up until the interval time is up
-        while not self.timesUp.is_set():
-            # all the MSDStat_Q, OSSStat_Q, and fileOP_Q are assumed as allFS_Q
-            if not allFS_Q.empty():
-                #print(provFSTbl)
-                # Get the list of objects from each queue one by one
-                obj_List = allFS_Q.get()
-                # extract objects from obj_List which can be either MDSDataObj, OSSDataObj, or FileOpObj type
-                for obj_Q in obj_List:
-                    # the uniqID function for each object in the queue should be the same for the same
-                    # jobID, Cluster, and SchedType, not mather what type of object are they
-                    uniq_id = obj_Q.uniqID()
-                    #print(uniq_id)
-                    # Ignore None hash IDs (i.e. Procs)
-                    if uniq_id is None:
-                        continue
-                    # if no data has been entered for this JonID_Cluster_SchedType, then create a ProvenanceObj
-                    # and fill it, otherwise append the object to the current available ProvenanceObj
-                    if not uniq_id in provFSTbl.keys():
-                        provFSTbl[uniq_id] = ProvenanceObj()
-                    #Insert the corresponding object into its relevant list (sorted by timestamp)
-                    # -- This looks naive but the Manager().Dict() behaves weird when you want to
-                    # -- operate on its objects. The only way it works is this:
-                    provenanceObj: ProvenanceObj = provFSTbl[uniq_id]
-                    provenanceObj.insert_sorted(obj_Q)
-                    provFSTbl[uniq_id] = provenanceObj
+        try:
+            # Fill the provFSTbl dictionary up until the interval time is up
+            while not self.timesUp.is_set():
+                # all the MSDStat_Q, OSSStat_Q, and fileOP_Q are assumed as allFS_Q
+                if not allFS_Q.empty():
+                    #print(provFSTbl)
+                    # Get the list of objects from each queue one by one
+                    obj_List = allFS_Q.get()
+                    # extract objects from obj_List which can be either MDSDataObj, OSSDataObj, or FileOpObj type
+                    for obj_Q in obj_List:
+                        # the uniqID function for each object in the queue should be the same for the same
+                        # jobID, Cluster, and SchedType, not mather what type of object are they
+                        uniq_id = obj_Q.uniqID()
+                        #print(uniq_id)
+                        # Ignore None hash IDs (i.e. Procs)
+                        if uniq_id is None:
+                            continue
+                        # if no data has been entered for this JonID_Cluster_SchedType, then create a ProvenanceObj
+                        # and fill it, otherwise append the object to the current available ProvenanceObj
+                        if not uniq_id in provFSTbl.keys():
+                            provFSTbl[uniq_id] = ProvenanceObj()
+                        #Insert the corresponding object into its relevant list (sorted by timestamp)
+                        # -- This looks naive but the Manager().Dict() behaves weird when you want to
+                        # -- operate on its objects. The only way it works is this:
+                        provenanceObj: ProvenanceObj = provFSTbl[uniq_id]
+                        provenanceObj.insert_sorted(obj_Q)
+                        provFSTbl[uniq_id] = provenanceObj
 
-            # Wait if Queue is empty and check the Queue again
-            #print(provFSTbl)
-            self.timesUp.wait(1)
+                # Wait if Queue is empty and check the Queue again
+                #print(provFSTbl)
+                self.timesUp.wait(1)
+
+        except ProvenanceExitExp:
+            pass
 
 
     @staticmethod
