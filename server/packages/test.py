@@ -373,12 +373,26 @@ class ProcTest(Process):
                 for proc in procLst:
                     proc.terminate()
 
-myproc = ProcTest()
+from communication import ServerConnection, CommunicationExp
+
+
+def listener(ch, method, properties, body):
+    if body.strip():
+        print("New Body")
+
+ch, conn = None, None
 try:
-    myproc.start()
-    myproc.join()
+    comm = ServerConnection()
+    conn, ch = comm.Collect_io_stats(listener)
+
+except CommunicationExp as commExp:
+    print(commExp.getMessage())
+
 except KeyboardInterrupt:
-    print("I signalld")
-finally:
-    if myproc.is_alive():
-        myproc.terminate()
+    ch.cancel()
+    #conn.close()
+
+except Exception as exp:
+    print(str(exp))
+
+

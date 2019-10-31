@@ -11,11 +11,12 @@
 """
 from communication import ServerConnection, CommunicationExp
 from config import ServerConfig, ConfigReadExcetion
-from exceptions import ProvenanceExitExp
 from multiprocessing import Process, Queue
+from exceptions import ProvenanceExitExp
 from typing import Dict, List
 import hashlib
 import ctypes
+import signal
 import json
 
 #
@@ -36,8 +37,6 @@ class IOStatsListener(Process):
         except ConfigReadExcetion as confExp:
             print(confExp.getMessage())
 
-        # print(self._parent_pid)
-
     # Implement Process.run()
     def run(self):
         try:
@@ -54,7 +53,6 @@ class IOStatsListener(Process):
             pass
 
         except Exception as exp:
-            print("Hooolllloooow")
             print(str(exp))
 
     # This function will be triggered as soon as RabbitMQ receives data from

@@ -40,11 +40,11 @@ def start_daemon():
         pass
 
     # Exit if Daemon serice is already running
-    if pid != None:
-        print "The agent_service is already running... pid=[%s]" % pid
+    if not pid is None:
+        print ("The agent_service is already running... pid=[%s]" % pid)
         sys.exit(2)
 
-    # Create Deamon Context if it does not exist
+    # Create Daemon Context if it does not exist
     context = DaemonContext(
             working_directory = os.path.dirname(os.path.realpath(__file__)),
             umask = 0o002,
@@ -85,8 +85,8 @@ def exit_daemon():
         pass
 
     # check if the service is already stopped
-    if pid == None:
-        print "The agent_service is not running."
+    if pid is None:
+        print("The agent_service is not running.")
         sys.exit(2)
 
     # Send SIGTERM signal to the Daemon process
@@ -109,10 +109,10 @@ def daemon_status():
         pass
 
     # check if the service is already stopped
-    if pid == None:
-        print "The agent_service is not running."
+    if pid is None:
+        print("The agent_service is not running.")
     else:
-        print "The agent_service is running... pid=[%s]" % pid
+        print("The agent_service is running... pid=[%s]" % pid)
 
 #
 # Main
@@ -121,13 +121,13 @@ if __name__ == "__main__":
 
     # Check the command syntax
     if len(sys.argv) != 2:
-        print "[Missing Argument]:  provenance_fs_agent.py < start | stop | status >"
+        print("[Missing Argument]:  provenance_fs_agent.py < start | stop | status >")
         sys.exit(1)
 
     # Get the requested command
     command = sys.argv[1].strip().lower()
 
-    # define how to swith to corresponding function
+    # define how to switch to corresponding function
     switch = {
         'start' : start_daemon,
         'stop'  : exit_daemon,
@@ -139,5 +139,5 @@ if __name__ == "__main__":
     try:
         switch[command]()
     except KeyError:
-        print "[Wrong Argument]:  provenance_fs_agent.py < start | stop | status >"
+        print("[Wrong Argument]:  provenance_fs_agent.py < start | stop | status >")
         sys.exit(1)
