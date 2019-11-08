@@ -20,14 +20,14 @@ import os
 # Main class in Config.py that reads and maintains the configuration
 # parameters in memory until the server.config file gets modified
 #
-class ServerConfig:
+class SchedConfig:
 
     def __init__(self):
         self.__parser = ConfigParser()
         # Track the config file changes
         self.__cached_stamp = 0
         # Config file name and path
-        configFile = os.path.dirname(__file__) + '/../conf/server.conf'
+        configFile = os.path.dirname(__file__) + '/../conf/sched.conf'
         realPath = os.path.realpath(configFile)
         self.__filepath = realPath
 
@@ -36,13 +36,7 @@ class ServerConfig:
     # Validate the server.conf to ensure all the mandatory sections and options
     # are defined and correct
     def __validateConfig(self):
-        config = {'lustre' : ['mds_hosts', 'oss_hosts', 'mdt_targets'],
-                  'rabbitmq' : ['server', 'port', 'username', 'password', 'vhost'],
-                  'io_listener' : ['exchange', 'queue'],
-                  'changelogs' : ['parallel','interval', 'users'],
-                  'aggregator' : ['interval', 'timer_intv'],
-                  'scheduler' : ['types'],
-                  'ugerest*' : ['address', 'port']}
+        config = {'rabbitmq' : ['server', 'port', 'username', 'password', 'vhost']}
         # Iterate over the Sections in config file
         for section in config.keys():
             isection = section
@@ -136,21 +130,6 @@ class ServerConfig:
 
     # ============= Public Methods =========================================
 
-    # Get a list of Lustre fsname(s) defined in Config file
-    #   Return: List
-    def getMdtTargets(self) -> list:
-        return self.__getConfigValue('lustre', 'mdt_targets', list)
-
-    # Get a list of MDS host names defined in Config file
-    #   Return: List
-    def getMDS_hosts(self) -> list:
-        return self.__getConfigValue('lustre', 'mds_hosts', list)
-
-    # Get a list of OSS host names defined in Config file
-    #   Return: List
-    def getOSS_hosts(self) -> list:
-        return self.__getConfigValue('lustre', 'oss_hosts', list)
-
     # Get the name of the server that RabbitMQ-Server is Running
     # Return: String
     def getServer(self) -> str:
@@ -178,61 +157,21 @@ class ServerConfig:
 
     # Get the name of the Queue that io_listener uses
     # Return: String
-    def getIOListener_Queue(self) -> str:
-        return self.__getConfigValue('io_listener', 'queue', str)
+    def getRMQueue(self) -> str:
+        return self.__getConfigValue('rabbitmq', 'queue', str)
 
     # Get the name of the Exchange that io_listener uses
     # Return: String
-    def getIOListener_Exch(self) -> str:
-        return self.__getConfigValue('io_listener', 'exchange', str)
-
-    # Get number of process that can be running in parallel to collect ChangeLogs
-    # Return: Int
-    def getChLogsPocnum(self) -> int:
-        return self.__getConfigValue('changelogs', 'parallel', int)
-
-    # Get the interval between collecting Lustre ChangeLogs
-    # Return: Float
-    def getChLogsIntv(self) -> float:
-        return self.__getConfigValue('changelogs', 'interval', int)
-
-    # Get the list of ChangeLogs users defined for each MDT
-    # Return: List
-    def getChLogsUsers(self) -> list:
-        return self.__getConfigValue('changelogs', 'users', list)
-
-    # Get the interval between aggregating the received data in the queue
-    # Return: Float
-    def getAggrIntv(self) -> float:
-        return self.__getConfigValue('aggregator', 'interval', float)
-
-    # Get the Aggregator timer Interval
-    # Return: Float
-    def getAggrTimer(self) -> float:
-        return self.__getConfigValue('aggregator', 'timer_intv', float)
-
-    # Get UGE_REST API address
-    # return String
-    def getUGERestAddr(self) -> str:
-        return self.__getConfigValue('ugerest', 'address', str)
-
-    # Get UGE_REST API port
-    # return String
-    def getUGERestPort(self) -> str:
-        return self.__getConfigValue('ugerest', 'port', str)
-
-    # Get the list of all available Job Schedulers
-    # Return: List
-    def getSchedulersList(self) -> list:
-        return self.__getConfigValue('scheduler', 'types', list)
+    def getRMExchange(self) -> str:
+        return self.__getConfigValue('rabbitmq', 'exchange', str)
 
 
 #
 # In any case of Error, Exception, or Mistake ConfigReadExcetion will be raised
 #
-class ConfigReadExcetion(Exception):
+class SchedConfReadExcetion(Exception):
     def __init__(self, message):
-        super(ConfigReadExcetion, self).__init__(message)
+        super(SchedConfReadExcetion, self).__init__(message)
         self.message = "\n [Error] _CONFIG_: " + message + "\n"
 
     def getMessage(self):
