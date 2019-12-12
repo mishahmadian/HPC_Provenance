@@ -3,7 +3,7 @@
     The main  module which collects the I/O statistics from lustre
     Servers such as MDS(s) and OSS(s). This module spawn three Threads:
 
-        1. CollectIOStats: Collecting the I/O statisitcs from lustre within
+        1. CollectIOStats: Collecting the I/O statistics from lustre within
            the specified time intervals and store it in a Queue
 
         2. Pick collected I/O stats from the Queue and publish (send) them
@@ -21,14 +21,13 @@ from threading import Thread, Event
 from ntplib import NTPClient
 from Queue import Queue
 import subprocess
-import sys
 import signal
 import socket
 import json
 import time
 
 #
-#  Defined a Class for collecting Jobstats on MDS(s) and OSS(s)
+#  Defined a Class for collecting JobStats on MDS(s) and OSS(s)
 #
 class CollectIOstats(Thread):
     def __init__(self, jobstat_Q):
@@ -37,17 +36,18 @@ class CollectIOstats(Thread):
         self.config = AgentConfig()
         self.jobstat_Q = jobstat_Q
         self.hostname = socket.gethostname()
-        # Set Jobstat cleanup interval
-        self.__setMaxAutoCleanup(self.config.getMaxJobstatAge())
+        # Set JobStat cleanup interval
+        if self.hostname in self.config.getMDS_hosts():
+            self.__setMaxAutoCleanup(self.config.getMaxJobstatAge())
 
     # Implement Thread.run()
     def run(self):
         while not self.exit_flag.is_set():
             try:
                 serverParam = self.__getServerParam()
-                # Collecting Jobstats from Lustre
+                # Collecting JobStats from Lustre
                 jobstat_out = self.__getJobStats(serverParam)
-                # Put the jobstat output in thread safe Queue
+                # Put the jobStat output in thread safe Queue
                 if jobstat_out.strip():
                     self.jobstat_Q.put(jobstat_out)
                     # Clear JobStats logs immediately to free space
@@ -58,7 +58,7 @@ class CollectIOstats(Thread):
                 self.exit_flag.wait(waitInterval)
 
             except ConfigReadExcetion as confExp:
-                print confExp.getMessage()
+                print(confExp.getMessage())
                 self.exit_flag.set()
 
     # Load the Agent Settings from Agent.conf file
@@ -118,7 +118,7 @@ class PublishIOstats(Thread):
                     self.producer.send(message_json)
 
                 except CommunicationExp as commExp:
-                    print commExp.getMessage()
+                    print(commExp.getMessage())
                     self.exit_flag.set()
 
             #
@@ -131,12 +131,12 @@ class PublishIOstats(Thread):
     # to a reliable NTP server
     def __get_ntp_time(self):
         ntp = NTPClient()
-        ntp_server = self.config.getNTPServer()
+        ntp_server = None #self.config.getNTPServer()
         try:
             response = ntp.request(ntp_server)
             return response.tx_time
         except NTPException as ntpExp:
-            print str(ntpExp)
+            print(str(ntpExp))
             self.exit_flag.set()
 
 
@@ -188,27 +188,27 @@ class IO_Collector:
                     raise MonitoringExitExp
 
         except MonitoringExitExp:
-            print ("\nProvenance FS agent is shutting down..."),
+            print("\nProvenance FS agent is shutting down..."),
 
         except ConfigReadExcetion as confExp:
-            print confExp.getMessage()
+            print(confExp.getMessage())
 
         except CommunicationExp as commExp:
-            print commExp.getMessage()
+            print(commExp.getMessage())
 
         except Exception as exp:
-            print str(exp)
+            print(str(exp))
 
         finally:
                 try:
-                    if not self.IOStats_Thr == None:
+                    if not self.IOStats_Thr is None:
                         self.IOStats_Thr.exit_flag.set()
                         self.IOStats_Thr.join()
-                    if not self.pubJstat_Thr == None:
+                    if not self.pubJstat_Thr is None:
                         self.pubJstat_Thr.exit_flag.set()
                         self.pubJstat_Thr.join()
 
-                    print "Done!"
+                    print("Done!")
 
                 except:
                     pass
