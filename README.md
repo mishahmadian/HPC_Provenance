@@ -7,7 +7,7 @@ In the last few years, significant growth in data processing demands and the eme
 
 <br/>**Architecture Diagram**
 
-<img src="Architecture.png" width="80%" height="80%">
+<img src="Architecture_Diagram.png" width="80%" height="80%">
 
 <br/>**Requirements:**
 *  Compatible with Linux operating systems
