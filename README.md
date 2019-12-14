@@ -22,3 +22,12 @@ In the last few years, significant growth in data processing demands and the eme
 * MongoDB
 
 <br/>**Installation:**
+HPC_Provenance consists of three software components which need to be installed on different machines as following:
+
+1.  ***agent_fs:*** The file system componets that has to be installed on every MDSs and OSSs:
+    * Make sure Python 2.7 is installed on every Lustre MDS and OSS srvers.
+    * Copy the "agent_fs" directory on every MDS and OSS servers.
+    * Install the required Python packages by running the `./install_python_packages.py` under "agent_fs/util". (This action does not require internet connection)
+    * Start the HPC_Provenance daemon on every MDS and OSS by utilizing the following command under "agent_fs" directory :
+        *  `./provenance_fs_agent.py <start | stop | status>`
+2.  
