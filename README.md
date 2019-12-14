@@ -1,18 +1,5 @@
-# HPC_Provenance
-
-**Introduction**
-
-In the last few years, significant growth in data processing demands and the emergence of more sophisticated scientific applications on HPC platforms have increased the file-level I/O operations on both local and shared file systems. As a result, HPC users and system administrators have been highly interested in collecting and analyzing I/O statistics of file operations at different granularity levels such as job, application, user or system. On the one hand, collected I/O statistics can be used in Provenance systems in order to describe detailed information about the history of data usage and related elements such as users, processes, jobs, and workflows that contribute to the existence of data. Provenance systems help users better understand what sort of access patterns are common in their application, how their application interacts with storage, and how their applications behave with respect to file I/O operations. On the other hand, system administrators can utilize the collected I/O statistics in order to optimize HPC resource usage due to the high cost of capital, power, maintenance, and manpower. They can also exploit these data to improve the performance of usersâ€™ application by finding their I/O bottlenecks and inefficiencies.
-&nbsp;
-&nbsp;
-&nbsp;
-&nbsp;
-&nbsp;
-
-**Architecture Diagram**
-
-<img src="Architecture.png" width="70%" height="70%">
-
-**Installation**
-
-
+ğ®‹Ş©Üx‰í®‡nrØ¨œ‰í…éZ²×ŞÃ'š®Ë"‚xŸ‰Æ§¶
+èÂØbÖ­jšèqë,Šxzf§vÆ§vØ^zg«éÜz‡æ¢·¬¢˜b²Øœj×±ÈØŸ‰Æ©¦XœjØ¨Ê'ğ©•«_¢¹¬…«ŞŠw+y«vØ^~)^•ëŞ”Î¢—«jØ¨Ê'n‹a–‡•©İ²«y×â•ë2²×¦°­ë.–ÑÏ
+ë®Æ§vÌ¬µéšvh§ŠËkjÚ+²¯y· †\¢×«zË^v)Ü¢Y^rØ§©İjv¥Ë8§€Î²Ö­ŠËbrÊ~)^¢—«jØ¨Æ­v'ßz·§¶
+ÚéZ®+r•ëŞ–Ë.r¬†Ú¦™bq«b¢{¬zº+³+-zc§¶¨èZ×(–WœµçHüë-jØ¬¶',q©Ûzëv)Ï®‹Ş©ÜzÌ¬µé¬Šz+uêí¡×¬r¸›y×­j)^v)ß¢¹š¶*'iº.¶Ø^†+-¢¼¨}Ö­jëæ§v·¥j×zW¦z{l²ç!jË¬z»)®‡²Ç¬†ìjwp¢¹–Œ,¶­r‰í®&îµëh¶Æ+-zw¡÷Zµ£ë¢÷§jw³+-zk!zZn±êìmëmz»§uêìµ©İÂ­²Ší¡öœqë,¥«mz¹ìj·œ¢i¨)í…è«jše‰Æ­Š‰á£az*Ú¦™bq«b¢x§µêÚrÛ0ŠØl¶ŠÚæ§v0¶¢­ªi–'¶*'±·¡j÷°ŠØkzÊ^rÛh~)^#ó¨¥êÚ¶*'°éí…ê-…êájwlÊË^™§fŠx¬¶¶­¢»j{­ŠX³zØ^r‰eyË^tÎ²Ö­ŠËbrÈ§¢·^®Ú(¦Ø¦‹7‡<*Ş²‹«që¬j¹ëh¶¡Š\¢Ëh}Æ©ŠÖ¥¦Œ®f¢×§jwjwfjzhÁêÓ…ìœjv¥²‡±¦Z"¶Ø^±çZµ«hŠjk¢÷­…ê^­ú+™©Üz‡î±êìjše‰Æ­Š‰ÛÉø§v)à¶¢¬În‹m•éŞrKØ§y÷âr'§r'¬n¿Û¯ğ+r­yËn­àâj
+Úš) ²·
