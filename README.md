@@ -7,7 +7,7 @@ In the last few years, significant growth in data processing demands and the eme
 
 <br/>**Architecture Diagram**
 
-<img src="Architecture.png" width="70%" height="70%">
+<img src="Architecture.png" width="80%" height="80%">
 
 <br/>**Requirements:**
 *  Compatible with Linux operating systems
@@ -30,4 +30,11 @@ HPC_Provenance consists of three software components which need to be installed 
     * Install the required Python packages by running the `./install_python_packages.py` under "agent_fs/util". (This action does not require internet connection)
     * Start the HPC_Provenance daemon on every MDS and OSS by utilizing the following command under "agent_fs" directory :
         *  `./provenance_fs_agent.py <start | stop | status>`
-2.  
+2.  ***server:*** The main service that should be running on a dedicated server in order to receive/aggregate/store the coolected data from Lustre and Scheduler servers
+    * Make sure Python 3.x is installed on the server machine.
+    * Copy the "servver" directory on the server machine.
+    * Install the required Python packages by running the `./install_python_packages.py` under "server/util". (This action does not require internet connection)
+    * Execute the following command from "server/packages" directory (Daemon for this service is under development):
+        *  `python3 main_interface.py`
+3.  ***agent_sched*** The agent component that collects the essential data from the job scheduler(s), such as UGE, SLURM,...
+    *  (Under Development)
