@@ -165,6 +165,7 @@ class FileOpObj(object):
     def __init__(self):
         self.recID = 0
         self.jobid = None
+        self.taskid = None
         self.cluster = None
         self.sched_type = None
         self.procid = None
@@ -189,6 +190,10 @@ class FileOpObj(object):
         if '_' in jobInfo: # this type of JobInfo comes from scheduler
             self.cluster, self.sched_type, self.jobid = \
                     jobInfo.strip().split('_')
+            # if the jobid is separated by '.' then it means the job is an array job
+            if '.' in self.jobid:
+                self.jobid, self.taskid = self.jobid.split('.')
+
         elif jobInfo:
             self.procid = jobInfo
 

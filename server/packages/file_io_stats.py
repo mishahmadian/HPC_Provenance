@@ -116,6 +116,10 @@ class IOStatsListener(Process):
                     # Otherwise, it is a JOB
                     else:
                         mdsObj.cluster, mdsObj.sched_type, mdsObj.jobid = jobid.split('_')
+                        # if the jobid is separated by '.' then it means the job is an array job
+                        if '.' in mdsObj.jobid:
+                            mdsObj.jobid, mdsObj.taskid = mdsObj.jobid.split('.')
+
                 # Snapshot from Lustre reports
                 elif "snapshot_time" in attr:
                     mdsObj.snapshot_time = line.split(':')[1].strip()
@@ -173,6 +177,10 @@ class IOStatsListener(Process):
                     # Otherwise, it is a JOB
                     else:
                         ossObj.cluster, ossObj.sched_type, ossObj.jobid = jobid.split('_')
+                        # if the jobid is separated by '.' then it means the job is an array job
+                        if '.' in ossObj.jobid:
+                            ossObj.jobid, ossObj.taskid = ossObj.jobid.split('.')
+
                 # Snapshot from Lustre reports
                 elif "snapshot_time" in attr:
                     ossObj.snapshot_time = line.split(':')[1].strip()
@@ -213,6 +221,7 @@ class MDSDataObj(object):
         self.mds_host = None
         self.timestamp = 0
         self.jobid = None
+        self.taskid = None
         self.cluster = None
         self.sched_type = None
         self.procid = None
@@ -253,6 +262,7 @@ class OSSDataObj(object):
         self.oss_host = None
         self.timestamp = 0
         self.jobid = None
+        self.taskid =None
         self.cluster = None
         self.sched_type = None
         self.procid = None
