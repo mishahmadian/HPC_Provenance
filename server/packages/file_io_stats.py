@@ -133,7 +133,7 @@ class IOStatsListener(Process):
                     setattr(mdsObj, attr, value)
 
             # Put the mdsObj into a list
-            print("{} : {}".format(serverHost, mdsObj.jobid))
+            #----> print("{} : {}".format(serverHost, mdsObj.jobid))
             mdsObjLst.append(mdsObj)
         # Return the JobStat output in form of MDSDataObj data type
         return mdsObjLst
@@ -207,7 +207,7 @@ class IOStatsListener(Process):
                     setattr(ossObj, attr, value)
 
             # Put the ossObj into a list
-            print("{} : {}".format(serverHost, ossObj.jobid))
+            #---->print("{} : {}".format(serverHost, ossObj.jobid))
             ossObjLst.append(ossObj)
         # Rerun the JobStat output in form of OSSDataObj data type
         return ossObjLst

@@ -13,4 +13,8 @@ import json, urllib.request
 class UGE:
     @staticmethod
     def getUGEJobInfo(config, cluster, iobId):
-        pass
+        r = urllib.request.urlopen("http://10.100.21.254:8182/jobs/952798.470")
+        # r = urllib.request.urlopen("http://10.100.21.254:8182/jobs_for_user/*/r")
+        # r = urllib.request.urlopen("http://10.100.21.254:8182/hostsummary/1/100")
+        data = json.loads(r.read().decode(r.info().get_param('charset') or 'utf-8'))
+        print(json.dumps(data, sort_keys=True, indent=4))

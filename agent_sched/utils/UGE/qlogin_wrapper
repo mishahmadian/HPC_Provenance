@@ -1,0 +1,15 @@
+#!/bin/sh 
+HOST=$1 
+PORT=$2 
+# /usr/bin/ssh -Y -o LogLevel=ERROR -p $PORT $HOST
+# Ensure forwarding:
+#echo "DISPLAY=$DISPLAY HOST=$HOST PORT=$PORT"
+
+if [ "x$DISPLAY" = "x" ]; then
+   exec /usr/bin/ssh -t -o LogLevel=ERROR -p $PORT $HOST "source /export/uge/scripts/qlogin_fix_it.sh; exec /bin/bash -li"
+   #/usr/bin/ssh -t -o LogLevel=ERROR -p $PORT $HOST
+else
+   echo "Enabling X11 forwarding"
+   exec /usr/bin/ssh -X -Y -t -o LogLevel=ERROR -p $PORT $HOST "source /export/uge/scripts/qlogin_fix_it.sh; exec /bin/bash -li"
+   #/usr/bin/ssh -X -Y -t -o LogLevel=ERROR -p $PORT $HOST
+fi
