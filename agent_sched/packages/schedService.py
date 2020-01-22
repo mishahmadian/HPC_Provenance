@@ -20,3 +20,4 @@ class SchedJobInfo(Thread):
 
     def run(self) -> None:
         while not self.exit_flag.is_set():
+            pass
