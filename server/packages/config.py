@@ -41,39 +41,34 @@ class ServerConfig:
                   'io_listener' : ['exchange', 'queue'],
                   'changelogs' : ['parallel','interval', 'users'],
                   'aggregator' : ['interval', 'timer_intv'],
-                  'scheduler' : ['types'],
-                  'ugerest*' : ['address', 'port']}
+                  '*uge' : ['clusters', 'address', 'port'],
+                  '*ugerest*' : ['address', 'port']}
         # Iterate over the Sections in config file
         for section in config.keys():
-            isection = section
             # all the sections with '*' are optional
             if '*' in section:
                 # skip the '*'
-                isection = section[:-1]
+                section = section[:-1]
                 # if the optional section was not provided then continue
-                if not self.__parser.has_section(isection):
+                if not self.__parser.has_section(section):
                     continue
             # Else the section is mandatory for configuration
             else:
-                if not self.__parser.has_section(isection):
-                    raise ConfigReadExcetion("The server.conf does not contain [%s] section" % isection)
+                if not self.__parser.has_section(section):
+                    raise ConfigReadExcetion("The server.conf does not contain [%s] section" % section)
 
             # Iterate over options under each section of the config file
             for option in config[section]:
-                ioption = option
-                # all the options with '*' are optional
-                if '*' in option:
-                    # skip the '*'
-                    ioption = option[:-1]
-                    # if optional 'option' is not available then continue
-                    if not self.__parser.has_option(isection, ioption):
-                        continue
+                # if optional 'option' is not available then continue
+                if not self.__parser.has_option(section, option):
+                    continue
+
                 # the mandatory option should be provided
                 else:
                     # make sure the mandatory option is provided
-                    if not self.__parser.has_option(isection, ioption):
+                    if not self.__parser.has_option(section, option):
                         raise ConfigReadExcetion("The '%s' is missing under [%s] section in server.conf" \
-                                                    % (ioption, isection))
+                                                    % (option, section))
 
     # Check if config file has been modified since last time
     def isConfigFileModified(self):
@@ -110,7 +105,10 @@ class ServerConfig:
         if self.__loadConfigFile() or not hasattr(self, attrName):
             # in case that option is not mandatory and does not exist, then return None
             if not self.__parser.has_option(section, option):
-                return None
+                # we should also check and make sure the section is not optional
+                section = '*' + section
+                if not self.__parser.has_option(section, option):
+                    return None
             # If the value type should be a list
             if retType is list:
                 # convert comma separated values of an specific option of specific section to List of values
@@ -211,7 +209,22 @@ class ServerConfig:
     def getAggrTimer(self) -> float:
         return self.__getConfigValue('aggregator', 'timer_intv', float)
 
+    # Get the list of UGE clusters
+    #   Return: List
+    def getUGE_clusters(self) -> list:
+        return self.__getConfigValue('uge', 'clusters', list)
+
     # Get UGE_REST API address
+    # return list
+    def getUGE_Addr(self) -> list:
+        return self.__getConfigValue('uge', 'addresses', list)
+
+    # Get UGE API port
+    # return list
+    def getUGE_Port(self) -> list:
+        return self.__getConfigValue('uge', 'ports', list)
+
+    # Get UGE API address
     # return String
     def getUGERestAddr(self) -> str:
         return self.__getConfigValue('ugerest', 'address', str)
@@ -220,11 +233,6 @@ class ServerConfig:
     # return String
     def getUGERestPort(self) -> str:
         return self.__getConfigValue('ugerest', 'port', str)
-
-    # Get the list of all available Job Schedulers
-    # Return: List
-    def getSchedulersList(self) -> list:
-        return self.__getConfigValue('scheduler', 'types', list)
 
 
 #

@@ -13,10 +13,10 @@ from communication import ServerConnection, CommunicationExp
 from config import ServerConfig, ConfigReadExcetion
 from multiprocessing import Process, Queue
 from exceptions import ProvenanceExitExp
+from persistant import FinishedJobs
 from typing import Dict, List
 import hashlib
 import ctypes
-import signal
 import json
 
 #
@@ -29,6 +29,7 @@ class IOStatsListener(Process):
         Process.__init__(self)
         self.MSDStat_Q = MSDStat_Q
         self.OSSStat_Q = OSSStat_Q
+        self.finishedJobs = FinishedJobs()
         self.config = ServerConfig()
         try:
             self.__MDS_hosts = self.config.getMDS_hosts()
@@ -58,29 +59,69 @@ class IOStatsListener(Process):
     # This function will be triggered as soon as RabbitMQ receives data from
     # agents on jobStat queue
     def ioStats_receiver(self, ch, method, properties, body):
+        mdsStatObjLst : List[MDSDataObj] = []
+        ossStatObjLst : List[OSSDataObj] = []
+        # Get the list of those jobs which are already finished
+        finished_jobIds = self.finishedJobs.getAll()
+
         io_stat_map = json.loads(body.decode("utf-8"))
         # Check whether the IO stat data comes from MDS or OSS.
         # Then choose the proper function
         if io_stat_map["server"] in self.__MDS_hosts:
             # Then data should be processed for MDS
-            mdsStatObjLst = self.__parseIoStats_mds(io_stat_map)
-            # Put mdsStatObjLst into the MSDStat_Q
-            self.MSDStat_Q.put(mdsStatObjLst)
+            mdsStatObjLst = self.__parseIoStats_mds(io_stat_map, finished_jobIds)
 
         elif io_stat_map["server"] in self.__OSS_hosts:
             # Parse the OSS IO stats
-            ossStatObjLst = self.__parseIoStats_oss(io_stat_map)
-            # Put ossStatObjs into OSSStat_Q
-            self.OSSStat_Q.put(ossStatObjLst)
+            ossStatObjLst = self.__parseIoStats_oss(io_stat_map, finished_jobIds)
+
         else:
             # Otherwise the data should be processed for OSS
             raise IOStatsException("The Source of incoming data does not match "
                                     +" with MDS/OSS hosts in 'server.conf'")
 
+        # Manage Finished Job IDs
+        self.__refine_finishedJobs(mdsStatObjLst, ossStatObjLst, finished_jobIds)
+        # Put mdsStatObjLst into the MSDStat_Q
+        if mdsStatObjLst:
+            self.MSDStat_Q.put(mdsStatObjLst)
+        # Put ossStatObjs into OSSStat_Q
+        if ossStatObjLst:
+            self.OSSStat_Q.put(ossStatObjLst)
+
+    # this method finds the finished_Job_IDs that no more exist on Lustre JobStat
+    def __refine_finishedJobs(self, mdsStatObjLst: list, ossStatObjLst: list, finished_jobIds: list):
+        jstat_curr_ids = set()
+        invalid_fin_ids = []
+        mdsStatObj : MDSDataObj
+        ossDataObj : OSSDataObj
+        # make a unique set of JobIds which are coming from MDSs
+        for mdsStatObj in mdsStatObjLst:
+            jobid = str(mdsStatObj.jobid)
+            if mdsStatObj.taskid:
+                jobid = '.'.join([jobid, str(mdsStatObj.taskid)])
+            jstat_curr_ids.add(jobid)
+
+        # make a unique set of JobIds which are coming from OSSs
+        for ossDataObj in ossStatObjLst:
+            jobid = str(ossDataObj.jobid)
+            if ossDataObj.taskid:
+                jobid = '.'.join([jobid, str(ossDataObj.taskid)])
+            jstat_curr_ids.add(jobid)
+
+        # if a finished_Job_Id does not appear among the current list of JobStats
+        # then it no more needs to be in the list of Finished jobs
+        for fJobId in finished_jobIds:
+            if fJobId not in jstat_curr_ids:
+                invalid_fin_ids.append(fJobId)
+
+        # Now refine the list of Finished JobIds by removing the unnecessary Ids
+        self.finishedJobs.correct_list(invalid_fin_ids)
+
     #
     # Convert/Map received data from MDS servers into a list of "MDSDataObj" data type
     #@staticmethod
-    def __parseIoStats_mds(self, data: Dict[str, str]) -> List:
+    def __parseIoStats_mds(self, data: Dict[str, str], finished_jobIds: list) -> List:
         # Create a List of MDSDataObj
         mdsObjLst: List[MDSDataObj] = []
         timestamp = data["timestamp"]
@@ -116,6 +157,11 @@ class IOStatsListener(Process):
                     # Otherwise, it is a JOB
                     else:
                         mdsObj.cluster, mdsObj.sched_type, mdsObj.jobid = jobid.split('_')
+                        # If jobid[.taskid] appears among the list of finished jobs,
+                        # then ignore the Jobstats data of this job
+                        if mdsObj.jobid in finished_jobIds:
+                            break
+
                         # if the jobid is separated by '.' then it means the job is an array job
                         if '.' in mdsObj.jobid:
                             mdsObj.jobid, mdsObj.taskid = mdsObj.jobid.split('.')
@@ -141,7 +187,7 @@ class IOStatsListener(Process):
     #
     # Convert/Map received data from MDS servers into "OSSDataObj" data type
     #@staticmethod
-    def __parseIoStats_oss(self, data: Dict[str, str]) -> List:
+    def __parseIoStats_oss(self, data: Dict[str, str], finished_jobIds: list) -> List:
         # Create a List of OSSDataObj
         ossObjLst: List[OSSDataObj] = []
         timestamp = data["timestamp"]
@@ -177,6 +223,11 @@ class IOStatsListener(Process):
                     # Otherwise, it is a JOB
                     else:
                         ossObj.cluster, ossObj.sched_type, ossObj.jobid = jobid.split('_')
+                        # If jobid[.taskid] appears among the list of finished jobs,
+                        # then ignore the Jobstats data of this job
+                        if ossObj.jobid in finished_jobIds:
+                            break
+
                         # if the jobid is separated by '.' then it means the job is an array job
                         if '.' in ossObj.jobid:
                             ossObj.jobid, ossObj.taskid = ossObj.jobid.split('.')

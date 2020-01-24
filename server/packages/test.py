@@ -382,8 +382,9 @@ def listener(ch, method, properties, body):
 
 ch, conn = None, None
 try:
-    comm = ServerConnection()
-    conn, ch = comm.Collect_io_stats(listener)
+    pass
+    #comm = ServerConnection()
+    #conn, ch = comm.Collect_io_stats(listener)
 
 except CommunicationExp as commExp:
     print(commExp.getMessage())
@@ -394,5 +395,10 @@ except KeyboardInterrupt:
 
 except Exception as exp:
     print(str(exp))
+
+jobid = "123"
+taskid = "2"
+jobid = '.'.join([jobid, taskid])
+print(jobid)
 
 
