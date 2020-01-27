@@ -396,9 +396,12 @@ except KeyboardInterrupt:
 except Exception as exp:
     print(str(exp))
 
-jobid = "123"
-taskid = "2"
-jobid = '.'.join([jobid, taskid])
-print(jobid)
+from enum import Enum
+class myEnum(Enum):
+    MISHA = 1
+    AHMADIAN = 2
 
+myenum = myEnum.MISHA
 
+if myenum is myEnum.MISHA:
+    print("yes")

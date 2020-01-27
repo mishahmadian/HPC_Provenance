@@ -9,7 +9,7 @@
 """
 from config import ServerConfig, ConfigReadExcetion
 from enum import Enum, unique
-from uge_service import UGE
+import uge_service
 import hashlib
 
 class JobScheduler:
@@ -22,13 +22,14 @@ class JobScheduler:
     #
     # The main method that gets the jobInfo object regardless of scheduler type and the type of job
     #
-    def getJobInfo(self, cluster, sched, jobId):
+    def getJobInfo(self, cluster, sched, jobId, taskid) -> 'JobInfo':
         # Check if scheduler type is already supported
         if sched not in self.__schedulers.keys():
             raise JobSchedulerException("The Scheduler type [" + sched + "] is invalid")
 
         # Call the proper method based on the scheduler type
-        self.__schedulers[sched](cluster, jobId)
+        return self.__schedulers[sched](cluster, sched, jobId, taskid)
+
 
     #
     # This method Collects Job Info from Univa Grid Engine (UGE) job scheduler by:
@@ -37,7 +38,7 @@ class JobScheduler:
     #
     #   *** We assume both UGERest and UGE Accounting are properly running on q_master node
     #
-    def __get_UGE_JobInfo(self, cluster, jobId):
+    def __get_UGE_JobInfo(self, cluster, sched, jobId, taskid) -> 'UGEJobInfo':
         uge_clusters = self.config.getUGE_clusters()
         if cluster in uge_clusters:
             cluster_inx = uge_clusters.index(cluster)
@@ -46,7 +47,19 @@ class JobScheduler:
 
         uge_ip = self.config.getUGE_Addr()[cluster_inx]
         uge_port = self.config.getUGE_Port()[cluster_inx]
-        UGE.getUGEJobInfo(uge_ip, uge_port, cluster, jobId)
+
+        # Call UGERestful API to collect Job Info
+        jobInfo = uge_service.UGERest.getUGEJobInfo(uge_ip, uge_port, jobId, taskid)
+
+        # return if jobInfo could be collected successful from UGERest
+        if jobInfo:
+            # Complete the Object
+            jobInfo.cluster = cluster
+            jobInfo.sched_type = sched
+            return jobInfo
+
+        # Otherwise, Look into UGE Accounting for Job Info
+
 
 
 # The Super class for all type of JobInfo objects which contains the necessary attributes
@@ -55,10 +68,12 @@ class JobInfo(object):
         self.jobid = None
         self.cluster = None
         self.sched_type = None
+        self.taskid = None
         self.status = self.Status.NONE
-        self.name = None
+        self.jobName = None
         self.queue = None
         self.num_cpu = None
+        self.submit_time = None
         self.start_time = None
         self.end_time = None
         self.username = None
@@ -77,9 +92,10 @@ class JobInfo(object):
         NONE = 0
         RUNNING = 1
         QWAITING = 2
-        FINISHED = 3
+        DELETING = 3
         ERROR = 4
-        UNDEF = 5
+        OTHERS = 5
+        FINISHED = 6
 
 
 
@@ -93,6 +109,15 @@ class UGEJobInfo(JobInfo):
         self.h_vmem = None
         self.parallelEnv = None
         self.project = None
+        self.pwd = None
+        self.command = None
+        self.cpu = None
+        self.io = None
+        self.ioops = None
+        self.iow = None
+        self.maxvmem = None
+        self.mem = None
+        self.wallclock = None
 
 #
 # In any case of Error, Exception, or Mistake JobSchedulerException will be raised
