@@ -177,8 +177,8 @@ class AgentConfig:
 #
 class ConfigReadExcetion(Exception):
     def __init__(self, message):
-        super(ConfigReadExcetion, self).__init__(message)
         self.message = "\n [Error] _CONFIG_: " + message + "\n"
+        super(ConfigReadExcetion, self).__init__(self.message)
 
     def getMessage(self):
         return self.message

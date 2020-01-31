@@ -7,6 +7,7 @@
 
  Misha ahmadian (misha.ahmadian@ttu.edu)
 """
+from communication import ServerConnection
 from config import ServerConfig
 #from scheduler import UGEJobInfo
 import json, urllib.request
@@ -88,8 +89,18 @@ class UGERest:
 class UGEAccounting:
 
     @staticmethod
-    def getUGEJobInfo(ip_addr, port, jobId, taskId) -> 'scheduler.UGEJobInfo' or None:
-        pass
+    def getUGEJobInfo(cluster, jobId, taskId) -> 'scheduler.UGEJobInfo' or None:
+        # Define the RabbitMQ RPC queue that calls remote UGE Accounting collector
+        rpc_queue = '_'.join([cluster, 'rpc', 'queue'])
+        # Establish a RPC Connection
+        serverCon = ServerConnection(is_rpc=True)
+        # Generate an RPC Request
+        job_task_id = str(jobId) + ("." + str(taskId) if taskId else ".0")
+        request = json.dumps({'action' : 'uge_acct', 'data' : [job_task_id]})
+        response = serverCon.rpc_call(rpc_queue, request)
+        print(response)
+
+        return None
 
 #
 # In any case of Error, Exception, or Mistake UGEServiceException will be raised
@@ -113,6 +124,9 @@ if __name__ == "__main__":
         taskid = sys.argv[2]
     jobinfo = UGERest.getUGEJobInfo(uge_ip, uge_port, jobid, taskid)
 
-    for attr in [atr for atr in dir(jobinfo) if (not atr.startswith('__'))
-                                              and (not callable(getattr(jobinfo, atr)))]:
-        print(attr + " --> " + str(getattr(jobinfo, attr)))
+    if jobinfo:
+        for attr in [atr for atr in dir(jobinfo) if (not atr.startswith('__'))
+                                                  and (not callable(getattr(jobinfo, atr)))]:
+            print(attr + " --> " + str(getattr(jobinfo, attr)))
+    else:
+        UGEAccounting.getUGEJobInfo('genius', jobid, taskid)

@@ -396,12 +396,12 @@ except KeyboardInterrupt:
 except Exception as exp:
     print(str(exp))
 
-from enum import Enum
-class myEnum(Enum):
-    MISHA = 1
-    AHMADIAN = 2
+from communication import ServerConnection
+import json
 
-myenum = myEnum.MISHA
-
-if myenum is myEnum.MISHA:
-    print("yes")
+request = json.dumps({'action' : 'uge_acct', 'data' : ['1091447.452']})
+print("I'm Client: " + str(request))
+serverCon = ServerConnection(is_rpc=True)
+response = serverCon.rpc_call("genius_rpc_queue", request)
+print(response)
+#print(str(['1', '2']))

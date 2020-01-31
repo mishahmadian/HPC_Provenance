@@ -20,7 +20,7 @@ else
   echo "** 'pip' for Python 2 was not found"
 fi
 # Installrequired packages for Pyhton 3
-PIP3=$(locate -b pip3 | fgrep -w /usr/bin)
+PIP3=$(locate -b pip3 | fgrep -w /usr/bin | head -1)
 if [ $? -eq 0 ]; then
   echo "Installing [$PKG_LST ] packages for Python 3 ..."
   $PIP3 install --no-index --find-links ./src -r ./requirements.txt
