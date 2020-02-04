@@ -41,8 +41,7 @@ class ServerConfig:
                   'io_listener' : ['exchange', 'queue'],
                   'changelogs' : ['parallel','interval', 'users'],
                   'aggregator' : ['interval', 'timer_intv'],
-                  '*uge' : ['clusters', 'address', 'port'],
-                  '*ugerest*' : ['address', 'port']}
+                  '*uge' : ['clusters', 'address', 'port', 'acct_interval']}
         # Iterate over the Sections in config file
         for section in config.keys():
             # all the sections with '*' are optional
@@ -192,7 +191,7 @@ class ServerConfig:
     # Get the interval between collecting Lustre ChangeLogs
     # Return: Float
     def getChLogsIntv(self) -> float:
-        return self.__getConfigValue('changelogs', 'interval', int)
+        return self.__getConfigValue('changelogs', 'interval', float)
 
     # Get the list of ChangeLogs users defined for each MDT
     # Return: List
@@ -224,15 +223,10 @@ class ServerConfig:
     def getUGE_Port(self) -> list:
         return self.__getConfigValue('uge', 'ports', list)
 
-    # Get UGE API address
-    # return String
-    def getUGERestAddr(self) -> str:
-        return self.__getConfigValue('ugerest', 'address', str)
-
-    # Get UGE_REST API port
-    # return String
-    def getUGERestPort(self) -> str:
-        return self.__getConfigValue('ugerest', 'port', str)
+    # Get the RPC Calls Interval for collecting UGE accounting data
+    # Return: Float
+    def getAccointingRPCIntv(self) -> float:
+        return self.__getConfigValue('uge', 'acct_interval', float)
 
 
 #

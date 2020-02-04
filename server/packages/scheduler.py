@@ -8,7 +8,9 @@
  Misha ahmadian (misha.ahmadian@ttu.edu)
 """
 from config import ServerConfig, ConfigReadExcetion
+from multiprocessing import Process, Event, Manager
 from enum import Enum, unique
+from typing import List
 import uge_service
 import hashlib
 
@@ -19,6 +21,9 @@ class JobScheduler:
         self.__schedulers = {
             'uge' : self.__get_UGE_JobInfo
         }
+
+        self.__acctJobIdReq = Manager().dict()
+        self.__acctJobInfoRes = Manager().dict()
     #
     # The main method that gets the jobInfo object regardless of scheduler type and the type of job
     #
@@ -59,6 +64,28 @@ class JobScheduler:
             return jobInfo
 
         # Otherwise, Look into UGE Accounting for Job Info
+
+    #
+    # In case of using Univa Grid Engine (UGE) a process should be spawned
+    # to keep contacting the UGE q_master and collecting the accounting data
+    # for already finished jobs. Since hitting "accounting" file is an expensive
+    # job, a separate process in a specific intervals will take care of that.
+    #
+    def __UGE_Accounting_Service(self, acctJobIdReq : dict, acctJobInfoRes : dict):
+        if len(acctJobIdReq):
+            # There might be different instances of UGE on different clusters
+            for clusterKey in acctJobIdReq.keys():
+                job_task_Lst : list = acctJobIdReq.get(clusterKey)
+                if job_task_Lst:
+                    jobInfoLst : List[JobInfo] = uge_service.UGEAccounting.getUGEJobInfo(clusterKey, job_task_Lst)
+
+                    if jobInfoLst:
+                        if clusterKey not in acctJobInfoRes.keys():
+                            acctJobInfoRes[clusterKey] = []
+
+                        allJobInfoLst : List[JobInfo] = acctJobInfoRes[clusterKey]
+                        allJobInfoLst.extend(jobInfoLst)
+                        acctJobInfoRes[clusterKey] = allJobInfoLst
 
 
 

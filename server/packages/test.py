@@ -399,9 +399,100 @@ except Exception as exp:
 from communication import ServerConnection
 import json
 
-request = json.dumps({'action' : 'uge_acct', 'data' : ['1091447.452']})
-print("I'm Client: " + str(request))
-serverCon = ServerConnection(is_rpc=True)
-response = serverCon.rpc_call("genius_rpc_queue", request)
-print(response)
+# request = json.dumps({'action' : 'uge_acct', 'data' : ['1091447.452']})
+# print("I'm Client: " + str(request))
+# serverCon = ServerConnection(is_rpc=True)
+# response = serverCon.rpc_call("genius_rpc_queue", request)
+# print(response)
 #print(str(['1', '2']))
+
+# jobid = '123'
+# taskid = None
+# print('.'.join(filter(None, [jobid, taskid])))
+
+# from multiprocessing import Process, Manager
+# from multiprocessing.managers import BaseManager, NamespaceProxy
+# mydict = Manager().dict()
+# mylist =  Manager().list()
+# #mydict.__setitem__("test", mylist)
+# mydict._callmethod('__setitem__', ("test", mylist,))
+# mydict._callmethod('__getitem__', ("test",))._callmethod('append', ("12",))
+# #mylist._callmethod('append', '12')
+# print(mydict._callmethod('__getitem__', ("test",)))
+# #mylstlen = mylist._callmethod('__len__')
+# #print(mylist.__str__())
+# print(mydict)
+
+
+
+from multiprocessing import Process, Manager
+from multiprocessing.managers import BaseManager, NamespaceProxy, SyncManager
+
+class JobInfo2(object):
+    def __init__(self, theid):
+        self.myValue = []
+        self.insertValue(theid)
+
+    def insertValue(self, value):
+        self.myValue.append(value)
+
+    def getLst(self):
+        return self.myValue
+
+class MyJobManager(BaseManager):
+    pass
+
+
+class MyJobProxy(NamespaceProxy):
+    _exposed_ = ('__getattribute__', '__setattr__', '__delattr__', 'insertValue', 'getLst')
+
+    def insertValue(self, value):
+        callmethod = object.__getattribute__(self, '_callmethod')
+        return callmethod(self.insertValue.__name__, (value,))
+
+    def getLst(self):
+        callmethod = object.__getattribute__(self, '_callmethod')
+        return callmethod(self.getLst.__name__)
+
+def procExec(mydict : 'SyncManager.dict', t_id):
+    _id = (1 if t_id % 2 == 0 else 2)
+    if not mydict.get(_id):
+        mydict._callmethod('__setitem__', (_id, jobInfoMngr.JobInfo2(t_id),))
+    else:
+        mydict._callmethod('__getitem__', (_id,)).insertValue(t_id)
+    myjobinfo2 = mydict._callmethod('__getitem__', (_id,))
+    print("The Thread_{} with dic_id={} has this list: {}".format(t_id, _id, str(myjobinfo2.getLst())))
+
+
+MyJobManager.register('JobInfo2', JobInfo2, MyJobProxy)
+
+jobInfoMngr = MyJobManager()
+jobInfoMngr.start()
+
+#jobInfo2 = jobInfoMngr.JobInfo2()
+myprocdict = Manager().dict()
+
+pool = multiprocessing.Pool(multiprocessing.cpu_count())
+for i in range(multiprocessing.cpu_count()):
+    pool.apply(func = procExec, args = (myprocdict, i))
+pool.close()
+pool.join()
+
+print(type(myprocdict))
+
+class outtest:
+    def __init__(self):
+        intest = self._intest()
+        print(str(intest.myid))
+
+    class _intest:
+        def __init__(self):
+            self.myid = 1234
+
+# myouttest = outtest()
+#
+# mydict = {}
+# if  not mydict.get("test"):
+#     print("Does not exist")
+# else:
+#     print("Does exist")

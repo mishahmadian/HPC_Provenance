@@ -6,6 +6,7 @@
 
  Misha ahmadian (misha.ahmadian@ttu.edu)
 """
+from multiprocessing.managers import BaseManager, NamespaceProxy, DictProxy
 from config import ServerConfig, ConfigReadExcetion
 from multiprocessing import Process, Event, Manager
 from threading import Event as Event_Thr, Thread
@@ -13,7 +14,7 @@ from file_io_stats import MDSDataObj, OSSDataObj
 from exceptions import ProvenanceExitExp
 from file_op_logs import FileOpObj
 from bisect import bisect_left
-from typing import Dict, List
+from typing import Dict, List, Sequence
 from tabulate import tabulate
 import time
 import os
@@ -41,8 +42,15 @@ class Aggregator(Process):
             print(confExp.getMessage())
             self.event_flag.set()
 
+
     # Implement Process.run()
     def run(self):
+        # Register the ProvenanceObj to the Aggregator Manager along with the Proxy class
+        self._AggregatorManager.register('ProvenanceObj', ProvenanceObj, self._ProvenanceObjProxy)
+        # Start the Base manager
+        provenanceObjManager = self._AggregatorManager()
+        provenanceObjManager.start()
+
         try:
             # Create a Timer Thread to be running for this process and change the
             # "timer_val" value every
@@ -61,11 +69,11 @@ class Aggregator(Process):
                 # reset the Times Up signal for all process
                 self.timesUp.clear()
                 # Aggregate MDS IO Stats into the Provenance Table
-                procList.append(Process(target=self.__aggregate2Dict, args=(provFSTbl, self.MSDStat_Q,)))
+                procList.append(Process(target=self.__aggregate2Dict, args=(provFSTbl, provenanceObjManager, self.MSDStat_Q,)))
                 # Aggregate OSS IO Stats into the Provenance Table
-                procList.append(Process(target=self.__aggregate2Dict, args=(provFSTbl, self.OSSStat_Q,)))
+                procList.append(Process(target=self.__aggregate2Dict, args=(provFSTbl, provenanceObjManager, self.OSSStat_Q,)))
                 # Aggregate File Operations into the Provenance Table
-                procList.append(Process(target=self.__aggregate2Dict, args=(provFSTbl, self.fileOP_Q,)))
+                procList.append(Process(target=self.__aggregate2Dict, args=(provFSTbl, provenanceObjManager, self.fileOP_Q,)))
 
                 # Start all the aggregator processes:
                 for proc in procList:
@@ -98,10 +106,11 @@ class Aggregator(Process):
 
         finally:
             self.timesUp.set()
+            provenanceObjManager.shutdown()
 
 
     # Aggregate and map all the MDS IO status data to a set of unique objects based on Job ID
-    def __aggregate2Dict(self, provFSTbl: Dict, allFS_Q):
+    def __aggregate2Dict(self, provFSTbl: 'DictProxy', provObjMngr : '_AggregatorManager', allFS_Q):
         try:
             # Fill the provFSTbl dictionary up until the interval time is up
             while not self.timesUp.is_set():
@@ -119,16 +128,20 @@ class Aggregator(Process):
                         # Ignore None hash IDs (i.e. Procs)
                         if uniq_id is None:
                             continue
-                        # if no data has been entered for this JonID_Cluster_SchedType, then create a ProvenanceObj
-                        # and fill it, otherwise append the object to the current available ProvenanceObj
-                        if not uniq_id in provFSTbl.keys():
-                            provFSTbl[uniq_id] = ProvenanceObj()
-                        #Insert the corresponding object into its relevant list (sorted by timestamp)
+                        # if no data has been collected for this JonID_Cluster_SchedType,
+                        #  then create a ProvenanceObj and fill it
+                        #--- if not uniq_id in provFSTbl.keys():
+                        #---     provFSTbl[uniq_id] = ProvenanceObj()
+                        if not provFSTbl.get(uniq_id):
+                            provFSTbl._callmethod('__setitem__', (uniq_id, provObjMngr.ProvenanceObj(obj_Q),))
+                        # Otherwise, Insert the corresponding object into its relevant list (sorted by timestamp)
                         # -- This looks naive but the Manager().Dict() behaves weird when you want to
                         # -- operate on its objects. The only way it works is this:
-                        provenanceObj: ProvenanceObj = provFSTbl[uniq_id]
-                        provenanceObj.insert_sorted(obj_Q)
-                        provFSTbl[uniq_id] = provenanceObj
+                        # provenanceObj: ProvenanceObj = provFSTbl[uniq_id]
+                        # provenanceObj.insert_sorted(obj_Q)
+                        # provFSTbl[uniq_id] = provenanceObj
+                        else:
+                            provFSTbl._callmethod('__getitem__', (uniq_id,)).insert_sorted(obj_Q)
 
                 # Wait if Queue is empty and check the Queue again
                 #print(provFSTbl)
@@ -139,8 +152,9 @@ class Aggregator(Process):
 
 
     @staticmethod
-    def __tableView(provFSTbl):
-        for objs in provFSTbl.values():
+    def __tableView(provFSTbl : DictProxy):
+        provDict = provFSTbl._getvalue()
+        for objs in provDict.values():
             mdsLst = objs.MDSDataObj_lst
             print("jobId= " + str(objs.jobid) + "  mdsLst: " + str(len(mdsLst)))
             # MDS
@@ -205,8 +219,33 @@ class Aggregator(Process):
             time.sleep(timerIntv)
 
 
+    #
+    # Define a BaseManager Class to handle the Proxy Objects for
+    #  Multiprocessing inside the aggregator
+    #
+    class _AggregatorManager(BaseManager):
+        pass
+
+    #
+    # Define a Proxy Class to handle the ProvenanceObj object
+    # while it's being shared among multiple processes
+    #
+    class _ProvenanceObjProxy(NamespaceProxy):
+        # Specify which methods can be exposed to the outside
+        _exposed_ = ('__getattribute__', '__setattr__', '__delattr__', 'insert_sorted')
+
+        # Create the proxy method that will be shared/called among multiple processes
+        def insert_sorted(self, value):
+            # _callmethod returns the result of a method of the proxy’s referent
+            callmethod = object.__getattribute__(self, '_callmethod')
+            return callmethod(self.insert_sorted.__name__, (value,))
+
+#
+# The main Provenance Object that holds the collected/aggregated data
+# from distributed servers and services
+#
 class ProvenanceObj(object):
-    def __init__(self):
+    def __init__(self, dataObj):
         self.jobid = None
         self.MDSDataObj_lst: List[MDSDataObj] = []
         self.OSSDataObj_lst: List[OSSDataObj] = []
@@ -214,6 +253,8 @@ class ProvenanceObj(object):
         self.__MDSDataObj_keys: List[float] = []
         self.__OSSDataObj_keys: List[float] = []
         self.__FileOpObj_keys: List[float] = []
+        # Insert the dataObj immediately
+        self.insert_sorted(dataObj)
 
     # This function receives any type of MDSDataObj, OSSDataObj, or FileOpObj
     # objects and uses the timestamp attribute as the key to sort them while
@@ -233,7 +274,7 @@ class ProvenanceObj(object):
             targetList = self.FileOpObj_lst
             keyList = self.__FileOpObj_keys
         else:
-            raise AggregatorException("Wrong instance of an object in the Queue")
+            raise AggregatorException("[ProvenanceObj] Wrong instance of an object in the Queue")
 
         # determine where to store index based on timestamps
         inx = bisect_left(keyList, key)

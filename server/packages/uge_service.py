@@ -11,6 +11,7 @@ from communication import ServerConnection
 from config import ServerConfig
 #from scheduler import UGEJobInfo
 import json, urllib.request
+from typing import List
 import scheduler
 import sys
 #
@@ -89,14 +90,18 @@ class UGERest:
 class UGEAccounting:
 
     @staticmethod
-    def getUGEJobInfo(cluster, jobId, taskId) -> 'scheduler.UGEJobInfo' or None:
+    def getUGEJobInfo(cluster, job_task_id_lst : List[str]) -> List['scheduler.UGEJobInfo'] or None:
         # Define the RabbitMQ RPC queue that calls remote UGE Accounting collector
         rpc_queue = '_'.join([cluster, 'rpc', 'queue'])
         # Establish a RPC Connection
         serverCon = ServerConnection(is_rpc=True)
-        # Generate an RPC Request
-        job_task_id = str(jobId) + ("." + str(taskId) if taskId else ".0")
-        request = json.dumps({'action' : 'uge_acct', 'data' : [job_task_id]})
+        # assemble the jobId and taskId
+        ####job_task_id = str(jobId) + ("." + str(taskId) if taskId else ".0")
+        # Generates an RPC Request:
+        #   - action: what type of actions should RPC call does
+        #   - data: a list of data that has to be passed to that particular action
+        request = json.dumps({'action' : 'uge_acct', 'data' : job_task_id_lst})
+        # Call the server RPC and receive the response as String
         response = serverCon.rpc_call(rpc_queue, request)
         print(response)
 
@@ -125,8 +130,8 @@ if __name__ == "__main__":
     jobinfo = UGERest.getUGEJobInfo(uge_ip, uge_port, jobid, taskid)
 
     if jobinfo:
-        for attr in [atr for atr in dir(jobinfo) if (not atr.startswith('__'))
+        for item in [atr for atr in dir(jobinfo) if (not atr.startswith('__'))
                                                   and (not callable(getattr(jobinfo, atr)))]:
-            print(attr + " --> " + str(getattr(jobinfo, attr)))
+            print(item + " --> " + str(getattr(jobinfo, item)))
     else:
         UGEAccounting.getUGEJobInfo('genius', jobid, taskid)

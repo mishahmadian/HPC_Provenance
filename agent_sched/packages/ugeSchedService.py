@@ -33,7 +33,7 @@ class UGEAccountingInfo:
                 try:
                     acctRec = ugeAcctFile.readline()
                     # Write off the max count
-                    #rec_counter -= 1
+                    rec_counter -= 1
                     # Skip comments
                     if not acctRec.strip() or acctRec.startswith('#'):
                         continue

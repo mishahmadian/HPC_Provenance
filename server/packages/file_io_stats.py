@@ -151,16 +151,18 @@ class IOStatsListener(Process):
                 if "job_id" in attr:
                     # get the id
                     jobid = line.split(':')[1].strip()
+
+                    # If jobid[.taskid] appears among the list of finished jobs,
+                    # then ignore the Jobstats data of this job
+                    if mdsObj.jobid in finished_jobIds:
+                        break
+
                     # if the id format is not compatible with "cluster_scheduler_ID" then it's a process id
                     if '_' not in jobid:
                         mdsObj.procid = jobid
                     # Otherwise, it is a JOB
                     else:
-                        mdsObj.cluster, mdsObj.sched_type, mdsObj.jobid = jobid.split('_')
-                        # If jobid[.taskid] appears among the list of finished jobs,
-                        # then ignore the Jobstats data of this job
-                        if mdsObj.jobid in finished_jobIds:
-                            break
+                        mdsObj.cluster, mdsObj.sched_type, mdsObj.jobid = jobid.split('_')\
 
                         # if the jobid is separated by '.' then it means the job is an array job
                         if '.' in mdsObj.jobid:
@@ -217,16 +219,18 @@ class IOStatsListener(Process):
                 if "job_id" in attr:
                     # get the id
                     jobid = line.split(':')[1].strip()
+
+                    # If jobid[.taskid] appears among the list of finished jobs,
+                    # then ignore the Jobstats data of this job
+                    if ossObj.jobid in finished_jobIds:
+                        break
+
                     # if the id format is not compatible with "cluster_scheduler_ID" then it's a process id
                     if '_' not in jobid:
                         ossObj.procid = jobid
                     # Otherwise, it is a JOB
                     else:
-                        ossObj.cluster, ossObj.sched_type, ossObj.jobid = jobid.split('_')
-                        # If jobid[.taskid] appears among the list of finished jobs,
-                        # then ignore the Jobstats data of this job
-                        if ossObj.jobid in finished_jobIds:
-                            break
+                        ossObj.cluster, ossObj.sched_type, ossObj.jobid = jobid.split('_')\
 
                         # if the jobid is separated by '.' then it means the job is an array job
                         if '.' in ossObj.jobid:
