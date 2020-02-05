@@ -430,7 +430,7 @@ from multiprocessing.managers import BaseManager, NamespaceProxy, SyncManager
 
 class JobInfo2(object):
     def __init__(self, theid):
-        self.myValue = []
+        self.myValue = Manager().list()
         self.insertValue(theid)
 
     def insertValue(self, value):
@@ -457,11 +457,17 @@ class MyJobProxy(NamespaceProxy):
 def procExec(mydict : 'SyncManager.dict', t_id):
     _id = (1 if t_id % 2 == 0 else 2)
     if not mydict.get(_id):
-        mydict._callmethod('__setitem__', (_id, jobInfoMngr.JobInfo2(t_id),))
+        #mydict._callmethod('__setitem__', (_id, jobInfoMngr.JobInfo2(t_id),))
+        print("I'm here 1")
+        mylst = Manager().list()
+        mydict._callmethod('__setitem__', (_id, mylst,))
+        print("I'm here 2")
     else:
-        mydict._callmethod('__getitem__', (_id,)).insertValue(t_id)
+        #mydict._callmethod('__getitem__', (_id,)).insertValue(t_id)
+        mydict._callmethod('__getitem__', (_id,)).append(t_id)
     myjobinfo2 = mydict._callmethod('__getitem__', (_id,))
-    print("The Thread_{} with dic_id={} has this list: {}".format(t_id, _id, str(myjobinfo2.getLst())))
+    #print("The Thread_{} with dic_id={} has this list: {}".format(t_id, _id, str(myjobinfo2.getLst())))
+    print("The Thread_{} with dic_id={} has this list: {}".format(t_id, _id, str(myjobinfo2)))
 
 
 MyJobManager.register('JobInfo2', JobInfo2, MyJobProxy)
@@ -478,7 +484,9 @@ for i in range(multiprocessing.cpu_count()):
 pool.close()
 pool.join()
 
-print(type(myprocdict))
+for key in myprocdict:
+    item = myprocdict.get(key)
+    print(str(item.getLst()))
 
 class outtest:
     def __init__(self):

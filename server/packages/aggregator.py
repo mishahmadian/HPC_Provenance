@@ -152,7 +152,7 @@ class Aggregator(Process):
 
 
     @staticmethod
-    def __tableView(provFSTbl : DictProxy):
+    def __tableView(provFSTbl : 'DictProxy') -> None:
         provDict = provFSTbl._getvalue()
         for objs in provDict.values():
             mdsLst = objs.MDSDataObj_lst

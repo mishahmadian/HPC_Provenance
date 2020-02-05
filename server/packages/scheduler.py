@@ -68,8 +68,8 @@ class JobScheduler:
     #
     # In case of using Univa Grid Engine (UGE) a process should be spawned
     # to keep contacting the UGE q_master and collecting the accounting data
-    # for already finished jobs. Since hitting "accounting" file is an expensive
-    # job, a separate process in a specific intervals will take care of that.
+    # for already finished jobs. Since reading the "accounting" file is an expensive
+    # process, a separate process in an specific intervals will take care of that.
     #
     def __UGE_Accounting_Service(self, acctJobIdReq : dict, acctJobInfoRes : dict):
         if len(acctJobIdReq):
