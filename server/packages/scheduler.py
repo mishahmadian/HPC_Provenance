@@ -21,8 +21,9 @@ class JobScheduler:
         self.__schedulers = {
             'uge' : self.__get_UGE_JobInfo
         }
-
+        # RPC Request dict: {cluster1 : [list of jobIds 1], cluster2 : [list of jobIds 2], ...}
         self.__acctJobIdReq = Manager().dict()
+        # RPC Response dict: {cluster1 : [list of jobInfo 1], cluster2 : [list of jobInfo 2], ...}
         self.__acctJobInfoRes = Manager().dict()
     #
     # The main method that gets the jobInfo object regardless of scheduler type and the type of job
@@ -80,12 +81,10 @@ class JobScheduler:
                     jobInfoLst : List[JobInfo] = uge_service.UGEAccounting.getUGEJobInfo(clusterKey, job_task_Lst)
 
                     if jobInfoLst:
-                        if clusterKey not in acctJobInfoRes.keys():
-                            acctJobInfoRes[clusterKey] = []
-
-                        allJobInfoLst : List[JobInfo] = acctJobInfoRes[clusterKey]
-                        allJobInfoLst.extend(jobInfoLst)
-                        acctJobInfoRes[clusterKey] = allJobInfoLst
+                        if not acctJobInfoRes.get(clusterKey):
+                            acctJobInfoRes._callmethod('__setitem__', (clusterKey, Manager().list(jobInfoLst),))
+                        else:
+                            acctJobInfoRes._callmethod('__getitem__', (clusterKey,)).extend(jobInfoLst)
 
 
 

@@ -229,7 +229,8 @@ class ProcTest2(Process):
 for inx, rec in enumerate(recs):
     if (inx == len(recs) - 1) and ("=" not in rec):
         print("index={}  rec={}".format(inx, rec))
-        chlogRec = "96 06UNLNK 21:06:00.508754493 2019.03.07 0x1 t=[0x200000403:0x60:0x0] j=rm.1000 ef=0xf u=0:0 nid=0@<0:0> p=[0x200000405:0x2:0x0] test2.txt"
+        chlogRec = "96 06UNLNK 21:06:00.508754493 2019.03.07 0x1 t=[0x200000403:0x60:0x0] j=rm.1000 
+                    ef=0xf u=0:0 nid=0@<0:0> p=[0x200000405:0x2:0x0] test2.txt"
         recs = chlogRec.split(' ')
 '''
 import subprocess
@@ -268,7 +269,8 @@ class ProcTest3(Process):
     def __test(self, mdtTarget: str, startRec: int) -> str:
         #return subprocess.check_output("lfs changelog " + mdtTarget + " " + str(startRec + 1),
         #                                 shell=True).decode("utf-8")
-        return subprocess.check_output("lfs changelog " + mdtTarget + " " + str(startRec + 1), shell=True, stderr=subprocess.STDOUT).decode("utf-8")
+        return subprocess.check_output("lfs changelog " + mdtTarget + " " + str(startRec + 1),
+                                       shell=True, stderr=subprocess.STDOUT).decode("utf-8")
 
 
 #procTest3 = ProcTest3()
@@ -425,13 +427,12 @@ import json
 
 
 
-from multiprocessing import Process, Manager
+from multiprocessing import Process, Manager, Value, Lock
 from multiprocessing.managers import BaseManager, NamespaceProxy, SyncManager
 
 class JobInfo2(object):
-    def __init__(self, theid):
-        self.myValue = Manager().list()
-        self.insertValue(theid)
+    def __init__(self):
+        self.myValue = []
 
     def insertValue(self, value):
         self.myValue.append(value)
@@ -439,7 +440,7 @@ class JobInfo2(object):
     def getLst(self):
         return self.myValue
 
-class MyJobManager(BaseManager):
+class MyJobManager(SyncManager):
     pass
 
 
@@ -454,20 +455,23 @@ class MyJobProxy(NamespaceProxy):
         callmethod = object.__getattribute__(self, '_callmethod')
         return callmethod(self.getLst.__name__)
 
-def procExec(mydict : 'SyncManager.dict', t_id):
+def procExec(mydict, t_id, manager, lock):
+    #id_val.value = (1 if t_id % 2 == 0 else 2)
     _id = (1 if t_id % 2 == 0 else 2)
-    if not mydict.get(_id):
-        #mydict._callmethod('__setitem__', (_id, jobInfoMngr.JobInfo2(t_id),))
-        print("I'm here 1")
-        mylst = Manager().list()
-        mydict._callmethod('__setitem__', (_id, mylst,))
-        print("I'm here 2")
-    else:
-        #mydict._callmethod('__getitem__', (_id,)).insertValue(t_id)
-        mydict._callmethod('__getitem__', (_id,)).append(t_id)
+    with lock:
+        if not mydict.get(_id):
+        #if not mydict._callmethod('__getitem__', (_id,)):
+            print("I'm here tid={}  _id={}".format(str(t_id), str(_id)))
+            #mydict._callmethod('__setitem__', (_id, manager.JobInfo2(),))
+            mydict[_id] = manager.JobInfo2()
+            #mydict._callmethod('__setitem__', (_id, [],))
+            #print("I'm here 2")
+    #else:
+    mydict._callmethod('__getitem__', (_id,)).insertValue(t_id)
+        #mydict._callmethod('__getitem__', (_id,)).append(t_id)
     myjobinfo2 = mydict._callmethod('__getitem__', (_id,))
-    #print("The Thread_{} with dic_id={} has this list: {}".format(t_id, _id, str(myjobinfo2.getLst())))
-    print("The Thread_{} with dic_id={} has this list: {}".format(t_id, _id, str(myjobinfo2)))
+    print("The Thread_{} with dic_id={} has this list: {}".format(t_id, _id, str(myjobinfo2.getLst())))
+    #print("The Thread_{} with dic_id={} has this list: {}".format(t_id, _id, str(myjobinfo2)))
 
 
 MyJobManager.register('JobInfo2', JobInfo2, MyJobProxy)
@@ -478,11 +482,26 @@ jobInfoMngr.start()
 #jobInfo2 = jobInfoMngr.JobInfo2()
 myprocdict = Manager().dict()
 
-pool = multiprocessing.Pool(multiprocessing.cpu_count())
-for i in range(multiprocessing.cpu_count()):
-    pool.apply(func = procExec, args = (myprocdict, i))
-pool.close()
-pool.join()
+# pool = multiprocessing.Pool(multiprocessing.cpu_count())
+# for i in range(multiprocessing.cpu_count()):
+#     pool.apply(func = procExec, args = (myprocdict, i))
+# pool.close()
+# pool.join()
+
+procList: List[Process] = []
+mylock = Lock()
+my_val = Value('i', 0)
+myrange = multiprocessing.cpu_count()
+#myrange = 1
+for i in range(myrange):
+    procList.append(Process(target=procExec, args=(myprocdict, i, jobInfoMngr, mylock,)))
+
+for proc in procList:
+    #proc.daemon = True
+    #time.sleep(0.5)
+    proc.start()
+for proc in procList:
+    proc.join()
 
 for key in myprocdict:
     item = myprocdict.get(key)
