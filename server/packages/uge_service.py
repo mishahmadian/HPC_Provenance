@@ -7,6 +7,7 @@
 
  Misha ahmadian (misha.ahmadian@ttu.edu)
 """
+from multiprocessing import Process, Queue, Event
 from communication import ServerConnection
 from config import ServerConfig
 #from scheduler import UGEJobInfo
@@ -16,14 +17,28 @@ import scheduler
 import sys
 #
 # This class communicates with UGERestful API in order to collect required information
-class UGERest:
+class UGE:
+    def __init__(self):
+        self.config = ServerConfig()
+        # RPC Request dict: {cluster1 : [list of jobIds 1], cluster2 : [list of jobIds 2], ...}
+        self.ugeAcctJobIdReq_Q = Queue()
+        # RPC Response dict: {cluster1 : [list of jobInfo 1], cluster2 : [list of jobInfo 2], ...}
+        self.ugeAcctJobInfoRes_Q = Queue()
+        # Process Event control
+        self.__event = Event()
+        # Start the UGE Accounting RPC process if [uge] section is defined in server.conf
+        self._ugeAcctProc: Process = Process(target=self.__UGE_Accounting_Service,
+                                             args=(self.ugeAcctJobIdReq_Q, self.ugeAcctJobInfoRes_Q,))
+        # Start the UGE Accounting Process
+        self._ugeAcctProc.daemon = True
+        self._ugeAcctProc.start()
 
     @staticmethod
-    def getUGEJobInfo(ip_addr, port, jobId, taskId) -> 'scheduler.UGEJobInfo' or None:
+    def getUGERestJobInfo(ip_addr, port, jobid, taskId) -> 'scheduler.UGEJobInfo' or None:
         # Define the UGERest base URL
         ugerest_base_url = "http://" + ip_addr + ":" + port
         # UGERest JobInfo API URL
-        ugerest_job_url = ugerest_base_url + "/jobs/" + str(jobId) + ("." + str(taskId) if taskId else ".1")
+        ugerest_job_url = ugerest_base_url + "/jobs/" + str(jobid) + ("." + str(taskId) if taskId else ".1")
         # Get JobInfo from UGERest
         response = urllib.request.urlopen(ugerest_job_url)
 
@@ -39,13 +54,13 @@ class UGERest:
             else:
                 # Convert JobInfo Json data into UGEJobInfo object
                 jobInfo = scheduler.UGEJobInfo()
-                jobInfo.jobid = jobId
+                jobInfo.jobid = jobid
                 jobInfo.taskid = taskId
                 jobInfo.status = scheduler.UGEJobInfo.Status(
                     {'r' : 1, 'qw' : 2, 'd' : 3, 'dr' : 3, 'E' : 4, 'Eqw' : 4}.get(data['state'], 5)
                 )
                 jobInfo.jobName = data['name']
-                jobInfo.queue = data['queue'].split('@')[0]
+                jobInfo.queue, jobInfo.exec_host = data['queue'].split('@')
                 jobInfo.num_cpu = data['slots']
                 jobInfo.submit_time = data['timeStamp']['submitEpoch']
                 jobInfo.start_time = data['timeStamp']['startEpoch']
@@ -84,28 +99,96 @@ class UGERest:
 
                 # Return generated JobInfo Object
                 return jobInfo
-#
-# This Class communicates with UGE q_master node and tries to collect Accounting data when job is already finished
-#
-class UGEAccounting:
+# #
+# # This Class communicates with UGE q_master node and tries to collect Accounting data when job is already finished
+# #
+# class UGEAccounting:
 
     @staticmethod
-    def getUGEJobInfo(cluster, job_task_id_lst : List[str]) -> List['scheduler.UGEJobInfo'] or None:
+    def __getUGEAcctJobInfo(cluster, job_task_id_lst : List[str]) -> List['scheduler.UGEJobInfo']:
         # Define the RabbitMQ RPC queue that calls remote UGE Accounting collector
         rpc_queue = '_'.join([cluster, 'rpc', 'queue'])
         # Establish a RPC Connection
         serverCon = ServerConnection(is_rpc=True)
         # assemble the jobId and taskId
-        ####job_task_id = str(jobId) + ("." + str(taskId) if taskId else ".0")
+        jobInfoLst : List['scheduler.UGEJobInfo'] = []
         # Generates an RPC Request:
         #   - action: what type of actions should RPC call does
         #   - data: a list of data that has to be passed to that particular action
         request = json.dumps({'action' : 'uge_acct', 'data' : job_task_id_lst})
         # Call the server RPC and receive the response as String
         response = serverCon.rpc_call(rpc_queue, request)
-        print(response)
+        if response.strip():
+            # The response from UGE Accounting server would be a large string separated by [^@]
+            jobRecLst = response.split('[^@]')
+            # Iterate over each record in accounting data from UGE server
+            for jobRec in jobRecLst:
+                # in UGE Accounting file the fields are separated by ':'
+                jobRecArray = jobRec.split(':')
+                # Make a UGEJobInfo Object for this record
+                jobInfo = scheduler.UGEJobInfo()
+                jobInfo.jobid = jobRecArray[5]
+                jobInfo.cluster = cluster
+                jobInfo.taskid = jobRecArray[35]
+                jobInfo.status = scheduler.UGEJobInfo.Status.FINISHED
+                jobInfo.jobName = jobRecArray[4]
+                jobInfo.queue = jobRecArray[0]
+                jobInfo.exec_host = jobRecArray[1]
+                jobInfo.num_cpu = jobRecArray[34]
+                jobInfo.submit_time = jobRecArray[8]
+                jobInfo.start_time = jobRecArray[9]
+                jobInfo.end_time = jobRecArray[10]
+                jobInfo.username = jobRecArray[3]
+                jobInfo.parallelEnv = jobRecArray[33]
+                jobInfo.project = jobRecArray[31]
+                jobInfo.pwd = jobRecArray[50]
+                jobInfo.command = jobRecArray[51]
+                jobInfo.cpu = jobRecArray[36]
+                jobInfo.io = jobRecArray[38]
+                jobInfo.iow = jobRecArray[40]
+                jobInfo.maxvmem = jobRecArray[42]
+                jobInfo.mem = jobRecArray[37]
+                jobInfo.wallclock = jobRecArray[13]
+                jobInfo.failed_no = jobRecArray[11]
+                if jobRecArray[13].strip() != 'NONE':
+                    jobInfo.q_del.extend(jobRecArray[13].split(','))
+                # Append the UGEJobInfo object into the list
+                jobInfoLst.append(jobInfo)
 
-        return None
+        return jobInfoLst
+
+    #
+    # In case of using Univa Grid Engine (UGE) a process should be spawned
+    # to keep contacting the UGE q_master and collecting the accounting data
+    # for already finished jobs. Since reading the "accounting" file is an expensive
+    # process, a separate process in an specific intervals will take care of that.
+    #
+    def __UGE_Accounting_Service(self, acctJobIdReq_Q : Queue, acctJobInfoRes_Q : Queue):
+        while not self.__event.is_set():
+            job_req_list = []
+            # get all job_ids in one snapshot
+            while acctJobIdReq_Q.qsize():
+                job_req_list.append(acctJobIdReq_Q.get())
+            # Map the cluster_jobId to a dict={cluster : [jobId...]}
+            job_req_map = {}
+            for item in job_req_list:
+                cluster, job_task_id = item.split('_')
+                if not job_req_map.get(cluster):
+                    job_req_map[cluster] = [job_task_id]
+                else :
+                    job_req_map[cluster].append(job_task_id)
+
+            # for each cluster calls the UGE Accounting remote RPC call and
+            # put the responses (list of JobInfo) in acctJobInfoRes_Q
+            for cluster in job_req_map.keys():
+                # Call UGE Accounting RPC
+                jobInfoLst: List['scheduler.UGEJobInfo'] = self.__getUGEAcctJobInfo(cluster, job_req_map.get(cluster))
+                # Put items in Queue
+                for jobInfo in jobInfoLst:
+                    acctJobInfoRes_Q.put(jobInfo)
+
+            # Wait the amount of time that is defined under [uge] section
+            self.__event.wait(self.config.getAccointingIntv())
 
 #
 # In any case of Error, Exception, or Mistake UGEServiceException will be raised
@@ -123,15 +206,15 @@ if __name__ == "__main__":
     cluster_inx = 0
     uge_ip = config.getUGE_Addr()[cluster_inx]
     uge_port = config.getUGE_Port()[cluster_inx]
-    jobid = sys.argv[1]
+    jobId = sys.argv[1]
     taskid = None
     if len(sys.argv) > 2:
         taskid = sys.argv[2]
-    jobinfo = UGERest.getUGEJobInfo(uge_ip, uge_port, jobid, taskid)
+    jobinfo = UGERest.getUGEJobInfo(uge_ip, uge_port, jobId, taskid)
 
     if jobinfo:
-        for item in [atr for atr in dir(jobinfo) if (not atr.startswith('__'))
+        for itm in [atr for atr in dir(jobinfo) if (not atr.startswith('__'))
                                                   and (not callable(getattr(jobinfo, atr)))]:
-            print(item + " --> " + str(getattr(jobinfo, item)))
+            print(itm + " --> " + str(getattr(jobinfo, itm)))
     else:
         UGEAccounting.getUGEJobInfo('genius', jobid, taskid)

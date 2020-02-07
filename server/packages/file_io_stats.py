@@ -154,7 +154,7 @@ class IOStatsListener(Process):
 
                     # If jobid[.taskid] appears among the list of finished jobs,
                     # then ignore the Jobstats data of this job
-                    if mdsObj.jobid in finished_jobIds:
+                    if jobid in finished_jobIds:
                         break
 
                     # if the id format is not compatible with "cluster_scheduler_ID" then it's a process id
@@ -222,7 +222,7 @@ class IOStatsListener(Process):
 
                     # If jobid[.taskid] appears among the list of finished jobs,
                     # then ignore the Jobstats data of this job
-                    if ossObj.jobid in finished_jobIds:
+                    if jobid in finished_jobIds:
                         break
 
                     # if the id format is not compatible with "cluster_scheduler_ID" then it's a process id

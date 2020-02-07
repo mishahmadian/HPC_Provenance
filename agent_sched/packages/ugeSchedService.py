@@ -38,10 +38,10 @@ class UGEAccountingInfo:
                     if not acctRec.strip() or acctRec.startswith('#'):
                         continue
                     # Get the Job_number and Task_number for Accounting file
-                    jobid = str(acctRec.split(':')[5])
-                    taskid = str(acctRec.split(':')[35])
+                    jobRec = acctRec.split(':')
+                    jobid = str(jobRec[5])
+                    taskid = str(jobRec[35])
                     job_task_id = '.'.join([jobid, taskid])
-                    #print("jobid={}  taskid={}  job.taskid={}".format(jobid, taskid, job_task_id))
 
                     # find the requested rec
                     if job_task_id in jobIdLst:

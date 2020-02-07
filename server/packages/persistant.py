@@ -10,6 +10,7 @@
           comes up.
 """
 from pathlib import Path
+import fcntl
 
 class FinishedJobs:
     def __init__(self):
@@ -18,8 +19,14 @@ class FinishedJobs:
 
     # Store the JobId of an already finished job
     def store(self, fJobId):
-        with open(self.fJobs_file, "a") as fjobFile:
+        fjobFile = open(self.fJobs_file, "a")
+        # lock the file to prevent race condition between processes
+        fcntl.flock(fjobFile, fcntl.LOCK_EX)
+        try:
             fjobFile.write(str(fJobId) + "\n")
+        finally:
+            fcntl.flock(fjobFile, fcntl.LOCK_UN)
+            fjobFile.close()
 
     # Get all Finished job IDs
     def getAll(self) -> list:
@@ -34,10 +41,16 @@ class FinishedJobs:
     # already finished and no JobStat exist for them on Lustre
     def correct_list(self, rJobIDLst: list):
         if rJobIDLst:
-            with open(self.fJobs_file, "r+") as fjobFile:
+            fjobFile = open(self.fJobs_file, "r+")
+            # lock the file to prevent race condition between processes
+            fcntl.flock(fjobFile, fcntl.LOCK_EX)
+            try:
                 fJobIds = fjobFile.readlines()
                 fjobFile.seek(0)
                 for jobId in fJobIds:
                     if jobId.strip() not in rJobIDLst:
                         fjobFile.write(jobId)
                 fjobFile.truncate()
+            finally:
+                fcntl.flock(fjobFile, fcntl.LOCK_UN)
+                fjobFile.close()

@@ -155,9 +155,10 @@ class Aggregator(Process):
         provDict = provFSTbl._getvalue()
         for objs in provDict.values():
             mdsLst = objs.MDSDataObj_lst
-            print("jobId= " + str(objs.jobid) + "  mdsLst: " + str(len(mdsLst)))
+            #print("jobId= " + str(objs.jobid) + "  mdsLst: " + str(len(mdsLst)))
             # MDS
             if mdsLst:
+                print("jobIds= " + str([i.jobid for i in mdsLst]) + "  mdsLst: " + str(len(mdsLst)))
                 mdsObj = mdsLst[-1]
                 mdsTbl = []
                 for attr in [atr for atr in dir(mdsObj) if (not atr.startswith('__'))
@@ -169,8 +170,9 @@ class Aggregator(Process):
 
             # OSS
             ossLst = objs.OSSDataObj_lst
-            print("jobId= " + str(objs.jobid) + "  ossLst: " + str(len(ossLst)))
+            #print("jobId= " + str(objs.jobid) + "  ossLst: " + str(len(ossLst)))
             if ossLst:
+                print("jobIds= " + str([i.jobid for i in ossLst]) + "  ossLst: " + str(len(ossLst)))
                 ossobj = ossLst[-1]
                 ossTbl = []
                 for attr in [atr for atr in dir(ossobj) if (not atr.startswith('__'))

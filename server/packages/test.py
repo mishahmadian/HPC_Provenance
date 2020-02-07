@@ -427,7 +427,7 @@ import json
 
 
 
-from multiprocessing import Process, Manager, Value, Lock
+from multiprocessing import Process, Manager, Value, Lock, Queue
 from multiprocessing.managers import BaseManager, NamespaceProxy, SyncManager
 
 class JobInfo2(object):
@@ -474,13 +474,13 @@ def procExec(mydict, t_id, manager, lock):
     #print("The Thread_{} with dic_id={} has this list: {}".format(t_id, _id, str(myjobinfo2)))
 
 
-MyJobManager.register('JobInfo2', JobInfo2, MyJobProxy)
-
-jobInfoMngr = MyJobManager()
-jobInfoMngr.start()
-
-#jobInfo2 = jobInfoMngr.JobInfo2()
-myprocdict = Manager().dict()
+# MyJobManager.register('JobInfo2', JobInfo2, MyJobProxy)
+#
+# jobInfoMngr = MyJobManager()
+# jobInfoMngr.start()
+#
+# #jobInfo2 = jobInfoMngr.JobInfo2()
+# myprocdict = Manager().dict()
 
 # pool = multiprocessing.Pool(multiprocessing.cpu_count())
 # for i in range(multiprocessing.cpu_count()):
@@ -488,24 +488,24 @@ myprocdict = Manager().dict()
 # pool.close()
 # pool.join()
 
-procList: List[Process] = []
-mylock = Lock()
-my_val = Value('i', 0)
-myrange = multiprocessing.cpu_count()
-#myrange = 1
-for i in range(myrange):
-    procList.append(Process(target=procExec, args=(myprocdict, i, jobInfoMngr, mylock,)))
+# procList: List[Process] = []
+# mylock = Lock()
+# my_val = Value('i', 0)
+# myrange = multiprocessing.cpu_count()
+# #myrange = 1
+# for i in range(myrange):
+#     procList.append(Process(target=procExec, args=(myprocdict, i, jobInfoMngr, mylock,)))
 
-for proc in procList:
-    #proc.daemon = True
-    #time.sleep(0.5)
-    proc.start()
-for proc in procList:
-    proc.join()
+# for proc in procList:
+#     #proc.daemon = True
+#     #time.sleep(0.5)
+#     proc.start()
+# for proc in procList:
+#     proc.join()
 
-for key in myprocdict:
-    item = myprocdict.get(key)
-    print(str(item.getLst()))
+# for key in myprocdict:
+#     item = myprocdict.get(key)
+#     print(str(item.getLst()))
 
 class outtest:
     def __init__(self):
@@ -523,3 +523,80 @@ class outtest:
 #     print("Does not exist")
 # else:
 #     print("Does exist")
+from multiprocessing import Process
+from queue import LifoQueue
+
+def produce_me(queue1, queue2):
+    value = 0
+    while True:
+        print("Producer --> " + str(value))
+        queue1.put(value)
+        queue2.put(value * 2)
+        value += 1
+        time.sleep(2)
+
+def consume_me(queue1, queue2):
+    while True:
+        print("Q1 Size: " + str(queue1.qsize()))
+        print("Q2 Size: " + str(queue2.qsize()))
+        result1 = []
+        result2 = []
+        # for i in iter(queue.get, 'STOP'):
+        #     result.append(i)
+        while queue1.qsize():
+            result1.append(queue1.get())
+
+        while queue2.qsize():
+            result2.append(queue2.get())
+
+        print("consumer --> R1=" + str(result1) + "  R2=" + str(result2))
+        time.sleep(5)
+
+class QManager(BaseManager):
+    pass
+
+import fcntl
+
+class Write_to_File(object):
+    def __init__(self):
+        self.myfile = './testfile'
+
+    def writeFile(self, myid, stime):
+        f = open(self.myfile, 'a+')
+        fcntl.flock(f, fcntl.LOCK_EX)
+        try:
+            print("[{}] started writing to file".format(str(myid)))
+            msg = "The procees ID: {} is writing at this time: {}\n\n".format(str(myid), str(time.time()))
+            f.write(msg)
+            print("[{}] finished writing to file".format(str(myid)))
+            time.sleep(stime)
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)
+            f.close()
+
+def file_store(myid, stime):
+    fwrie = Write_to_File()
+    while True:
+        fwrie.writeFile(myid, stime)
+
+
+
+# proc1 = Process(target=file_store, args=(1, 1,))
+# proc2 = Process(target=file_store, args=(2, 1,))
+#
+# proc1.start()
+# #time.sleep(0.5)
+# proc2.start()
+#
+# proc1.join()
+# proc2.join()
+
+import sys
+accounting = 'omni:compute-7-8.localdomain:bio:jacqurob:HetBruBak.2bit-batch-014:1087084:sge:0:1580401472760:1580488182775:1580504641762:0:0:16458.987:226745.457:4302.282:1432880:0:0:0:0:1005406058:0:0:45787976:206101800:0:0:0:29140696:11356397:quanah:defaultdepartment:sm:10:0:231047.738:162990.742267:1073.551244:-u jacqurob -q omni -l h_rt=172800,h_vmem=5.3G,s_rt=172800 -pe sm 10 -P quanah -binding no_job_binding 0 0 0 0 no_explicit_binding:85.780000:NONE:18271285248:0:0:NONE:NONE:0:0:compute-1-40.localdomain:/lustre/scratch/jacqurob/tsm/RepeatMasker/HetBruBak:qsub /lustre/scratch/jacqurob/tsm/RepeatMasker/HetBruBak/RMPart/014/batch-014.sh:16459.169000:201170733'
+acctRec = accounting.split(':')
+#print(str(acctRec[int(sys.argv[1])]))
+
+myq = "all.q@compute-1"
+queue = 'test'
+host = myq.split(',')
+print(queue + "  " + str(host))

@@ -62,7 +62,9 @@ class SchedMain:
         if request['action'] == 'uge_acct':
             ugeAcctInfo = UGEAccountingInfo(self.__config)
             ugeAcctLst = ugeAcctInfo.getAcctountingInfo(request['data'])
-            return str(ugeAcctLst)
+            if ugeAcctLst:
+                return '[^@]'.join(ugeAcctLst)
+            return ''
 
         # else return nothing
         return ''
