@@ -64,10 +64,10 @@ class SchedMain:
             ugeAcctLst = ugeAcctInfo.getAcctountingInfo(request['data'])
             if ugeAcctLst:
                 return '[^@]'.join(ugeAcctLst)
-            return ''
+            return 'NONE'
 
         # else return nothing
-        return ''
+        return 'NONE'
 #
 #  Exception will be raised when SIGINT or SIGTERM are called
 #

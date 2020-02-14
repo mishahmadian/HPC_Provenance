@@ -7,11 +7,10 @@
 
  Misha ahmadian (misha.ahmadian@ttu.edu)
 """
-from uge_service import UGE, UGEServiceException
 from config import ServerConfig, ConfigReadExcetion
 from persistant import FinishedJobs
 from enum import Enum, unique
-
+import uge_service
 import hashlib
 
 class JobScheduler:
@@ -27,7 +26,7 @@ class JobScheduler:
         #
         self.__ugeService = None
         if self.config.getUGE_clusters():
-            self.__ugeService = UGE()
+            self.__ugeService = uge_service.UGE()
         # -------------------------------------------------------------------------------------
     #
     # The main method that gets the jobInfo object regardless of scheduler type and the type of job
@@ -70,7 +69,8 @@ class JobScheduler:
         jobInfo = None
         while job_info_lst:
             jobInfo_tmp: UGEJobInfo = job_info_lst.pop(0)
-            if jobInfo_tmp.cluster == cluster and jobInfo_tmp.jobid == jobId and jobInfo_tmp.taskid == taskid:
+            if jobInfo_tmp.cluster == cluster and jobInfo_tmp.jobid == jobId \
+                    and jobInfo_tmp.taskid == taskid:
                 jobInfo = jobInfo_tmp
             else:
                 self.__ugeService.ugeAcctJobInfoRes_Q.put(jobInfo_tmp)
@@ -112,7 +112,7 @@ class JobScheduler:
             jobInfo.cluster = cluster
             jobInfo.sched = sched
             jobInfo.jobid = jobId
-            jobInfo.taskid = taskid
+            jobInfo.taskid = (taskid if taskid else None)
             jobInfo.status = JobInfo.Status.UNDEF
             return jobInfo
 
@@ -139,7 +139,7 @@ class JobInfo(object):
     # This function returns a unique ID for every objects with the same JobID, Scheduler, and cluster
     def uniqID(self):
         # calculate the MD5 hash
-        obj_id = ''.join([self.sched_type, self.cluster, self.jobid])
+        obj_id = ''.join(filter(None, [self.sched_type, self.cluster, self.jobid, self.taskid]))
         hash_id = hashlib.md5(obj_id.encode(encoding='UTF=8'))
         return hash_id.hexdigest()
     #
@@ -190,3 +190,27 @@ class JobSchedulerException(Exception):
 
     def getMessage(self):
         return self.message
+
+
+if __name__ == "__main__":
+    import sys, time, os
+    from tabulate import tabulate
+    scheduler = JobScheduler()
+    jobid = int(sys.argv[1])
+    taskId = None
+    if len(sys.argv) > 2:
+        taskId = int(sys.argv[2])
+    while True:
+        jobinfo = scheduler.getJobInfo('genius', 'uge', jobid, taskId)
+        # ---> Print jobinfo
+        jobTbl = []
+        for attr in [atr for atr in dir(jobinfo) if (not atr.startswith('__'))
+                                                   and (not callable(getattr(jobinfo, atr)))]:
+            jobTbl.append([attr, getattr(jobinfo, attr)])
+
+        os.system("clear")
+        print(tabulate(jobTbl, headers=["Attribute:", "Value:"], tablefmt="github") + "\n")
+
+        # if jobinfo.status is JobInfo.Status.FINISHED:
+        #     break
+        time.sleep(5)

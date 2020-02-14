@@ -592,11 +592,16 @@ def file_store(myid, stime):
 # proc2.join()
 
 import sys
-accounting = 'omni:compute-7-8.localdomain:bio:jacqurob:HetBruBak.2bit-batch-014:1087084:sge:0:1580401472760:1580488182775:1580504641762:0:0:16458.987:226745.457:4302.282:1432880:0:0:0:0:1005406058:0:0:45787976:206101800:0:0:0:29140696:11356397:quanah:defaultdepartment:sm:10:0:231047.738:162990.742267:1073.551244:-u jacqurob -q omni -l h_rt=172800,h_vmem=5.3G,s_rt=172800 -pe sm 10 -P quanah -binding no_job_binding 0 0 0 0 no_explicit_binding:85.780000:NONE:18271285248:0:0:NONE:NONE:0:0:compute-1-40.localdomain:/lustre/scratch/jacqurob/tsm/RepeatMasker/HetBruBak:qsub /lustre/scratch/jacqurob/tsm/RepeatMasker/HetBruBak/RMPart/014/batch-014.sh:16459.169000:201170733'
+accounting = 'all.q:compute-14-15.localdomain:users:misha:Test:475:sge:0:1581626412597:1581626415789:1581626462209:100:137:46.420:0.011:0.037:10096:0:0:0:0:1899:0:0:8:272:0:0:0:205:10:NONE:defaultdepartment:sm:1:0:0.047:0.001619:0.000052:-q all.q -l h_vmem=1.200G -pe sm 1 -binding no_job_binding 0 0 0 0 no_explicit_binding:1.170000:NONE:226451456:0:0:NONE:misha@genius.hpcc.ttu.edu:0:0:genius.hpcc.ttu.edu:/home/misha/uge:qsub sleep.sh:50.309000:514:NONE'
 acctRec = accounting.split(':')
 #print(str(acctRec[int(sys.argv[1])]))
 
-myq = "all.q@compute-1"
-queue = 'test'
-host = myq.split(',')
-print(queue + "  " + str(host))
+# myq = "all.q@compute-1"
+# queue = 'test'
+# host = myq.split(',')
+# print(queue + "  " + str(host))
+
+jobid = '123'
+taskid = None
+myname = 'misha'
+print('_'.join(filter(None, [jobid, taskid, myname])))

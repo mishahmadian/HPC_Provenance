@@ -225,7 +225,7 @@ class ServerConfig:
 
     # Get the RPC Calls Interval for collecting UGE accounting data
     # Return: Float
-    def getAccointingIntv(self) -> float:
+    def getUGEAcctRPCIntv(self) -> float:
         return self.__getConfigValue('uge', 'acct_interval', float)
 
 

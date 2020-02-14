@@ -245,7 +245,7 @@ class FileOpObj(object):
             # No hash for this object if jobID is not defined
             return None
         # calculate the MD5 hash
-        obj_id = ''.join([self.sched_type, self.cluster, self.jobid])
+        obj_id = ''.join(filter(None, [self.sched_type, self.cluster, self.jobid, self.taskid]))
         hash_id = hashlib.md5(obj_id.encode(encoding='UTF=8'))
         return hash_id.hexdigest()
 

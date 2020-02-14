@@ -7,7 +7,8 @@
  Misha ahmadian (misha.ahmadian@ttu.edu)
 """
 from multiprocessing.managers import BaseManager, NamespaceProxy, DictProxy
-from multiprocessing import Process, Event, Manager, Lock
+from scheduler import JobScheduler, JobInfo, JobSchedulerException
+from multiprocessing import Process, Event, Manager, Lock, Queue
 from config import ServerConfig, ConfigReadExcetion
 from threading import Event as Event_Thr, Thread
 from file_io_stats import MDSDataObj, OSSDataObj
@@ -29,6 +30,7 @@ class Aggregator(Process):
         self.MSDStat_Q = MSDStat_Q
         self.OSSStat_Q = OSSStat_Q
         self.fileOP_Q = fileOP_Q
+        self.jobInfo_Q = Queue()
         self.event_flag = Event()
         self.timesUp = Event()
         self.currentTime = 0
@@ -36,6 +38,8 @@ class Aggregator(Process):
         try:
             self.__interval = self.config.getAggrIntv()
             self.__timerIntv = self.config.getAggrTimer()
+
+            self.__jobScheduler = JobScheduler()
 
         except ConfigReadExcetion as confExp:
             print(confExp.getMessage())
@@ -70,14 +74,20 @@ class Aggregator(Process):
                 # reset the Times Up signal for all process
                 self.timesUp.clear()
                 # Aggregate MDS IO Stats into the Provenance Table
-                procList.append(Process(target=self.__aggregate2Dict, args=(provFSTbl, provenanceObjManager,
-                                                                            aggregatorLock, self.MSDStat_Q,)))
+                procList.append(Process(target=self.__aggregateFIO, args=(provFSTbl, provenanceObjManager,
+                                                                            aggregatorLock, self.MSDStat_Q,
+                                                                            self.jobInfo_Q,)))
                 # Aggregate OSS IO Stats into the Provenance Table
-                procList.append(Process(target=self.__aggregate2Dict, args=(provFSTbl, provenanceObjManager,
-                                                                            aggregatorLock, self.OSSStat_Q,)))
+                procList.append(Process(target=self.__aggregateFIO, args=(provFSTbl, provenanceObjManager,
+                                                                            aggregatorLock, self.OSSStat_Q,
+                                                                            self.jobInfo_Q,)))
                 # Aggregate File Operations into the Provenance Table
-                procList.append(Process(target=self.__aggregate2Dict, args=(provFSTbl, provenanceObjManager,
-                                                                            aggregatorLock, self.fileOP_Q,)))
+                procList.append(Process(target=self.__aggregateFIO, args=(provFSTbl, provenanceObjManager,
+                                                                            aggregatorLock, self.fileOP_Q,
+                                                                            self.jobInfo_Q,)))
+                # Aggregate Job Info(s) from Job Scheduler(s)
+                procList.append(Process(target=self.__aggregateJobs, args=(self.__jobScheduler, provFSTbl,
+                                                                          self.jobInfo_Q,)))
 
                 # Start all the aggregator processes:
                 for proc in procList:
@@ -91,14 +101,7 @@ class Aggregator(Process):
                 for proc in procList:
                     proc.join()
 
-                #
-                #if provFSTbl:
-                #    for key, valuObj in provFSTbl.items():
-                        #print(" key id: " + str(key))
-                        #print(" --MDS_keys:" + str(valuObj.__MDSDataObj_keys))
-                        #print(" --OSS_keys:" + str(valuObj.__OSSDataObj_keys))
-                        #print(" --FileOps_keys:" + str(valuObj.FileOpObj_keys))
-                #        pass
+
                 if len(provFSTbl):
                     self.__tableView(provFSTbl)
 
@@ -113,8 +116,9 @@ class Aggregator(Process):
             provenanceObjManager.shutdown()
 
 
-    # Aggregate and map all the MDS IO status data to a set of unique objects based on Job ID
-    def __aggregate2Dict(self, provFSTbl: 'DictProxy', provObjMngr : '_AggregatorManager', aggregatorLock, allFS_Q):
+    # Aggregate and map all the MDS/OSS/Changelog IO  data to a set of unique objects based on Job ID
+    def __aggregateFIO(self, provFSTbl: 'DictProxy', provObjMngr : '_AggregatorManager',
+                         aggregatorLock, allFS_Q: Queue, jobInfo_Q : Queue):
         try:
             # Fill the provFSTbl dictionary up until the interval time is up
             while not self.timesUp.is_set():
@@ -137,7 +141,19 @@ class Aggregator(Process):
                         with aggregatorLock:
                             if not provFSTbl.get(uniq_id):
                                 provFSTbl[uniq_id] = provObjMngr.ProvenanceObj()
+                                # create an empty JobInfo object
+                                # jobInfo = jobInfo
+                                # jobInfo.cluster = obj_Q.cluster
+                                # jobInfo.sched = obj_Q.sched
+                                # jobInfo.jobid = obj_Q.jobId
+                                # jobInfo.taskid = (obj_Q.taskid if obj_Q.taskid else None)
+                                # jobInfo.status = JobInfo.Status.UNDEF
+                                # provFSTbl._callmethod('__getitem__', (uniq_id,)).updateJobInfo(jobInfo)
 
+                        # Add a request in jobInfo_Q to get information from corresponding job scheduler
+                        job_info = '_'.join([obj_Q.cluster, obj_Q.sched, obj_Q.jobId +
+                                             ("." + obj_Q.taskid if obj_Q.taskid else "")])
+                        jobInfo_Q.put(job_info)
                         # Insert the corresponding object into its relevant list (sorted by timestamp)
                         # the _callmethod of Proxy class will take care of the complex object shared between processes
                         provFSTbl._callmethod('__getitem__', (uniq_id,)).insert_sorted(obj_Q)
@@ -148,6 +164,31 @@ class Aggregator(Process):
 
         except ProvenanceExitExp:
             pass
+
+
+    # Aggregate the Job Info objects that come from Job Scheduler(s)
+    def __aggregateJobs(self, jobScheduler: JobScheduler, provFSTbl: 'DictProxy', jobInfo_Q : Queue):
+
+        # Fill the provFSTbl dictionary up until the interval time is up
+        while not self.timesUp.is_set():
+            # all the MSDStat_Q, OSSStat_Q, and fileOP_Q are assumed as allFS_Q
+            if not jobInfo_Q.empty():
+                # Get aj JobInfo Request
+                job_req = jobInfo_Q.get()
+                # Unpack the job_req
+                cluster, sched, jobid = job_req.split('_')
+                taskid = None
+                if '.' in jobid:
+                    jobid, taskid = jobid.split('.')
+
+                # Get Job Info from Job Scheduler
+                jobInfo : JobInfo = jobScheduler.getJobInfo(cluster, sched, jobid, taskid)
+                # Get the  JobInfo Unique ID
+                uniq_id = jobInfo.uniqID()
+                # Update the corresponding object in Provenance Table with this JobInfo object
+                provFSTbl._callmethod('__getitem__', (uniq_id,)).updateJobInfo(jobInfo)
+
+            self.timesUp.wait(1)
 
 
     @staticmethod
@@ -236,6 +277,12 @@ class Aggregator(Process):
         _exposed_ = ('__getattribute__', '__setattr__', '__delattr__', 'insert_sorted')
 
         # Create the proxy method that will be shared/called among multiple processes
+        def updateJobInfo(self, jobInfo):
+            # _callmethod returns the result of a method of the proxy’s referent
+            callmethod = object.__getattribute__(self, '_callmethod')
+            return callmethod(self.updateJobInfo.__name__, (jobInfo,))
+
+        # Create the proxy method that will be shared/called among multiple processes
         def insert_sorted(self, value):
             # _callmethod returns the result of a method of the proxy’s referent
             callmethod = object.__getattribute__(self, '_callmethod')
@@ -247,13 +294,18 @@ class Aggregator(Process):
 #
 class ProvenanceObj(object):
     def __init__(self):
-        self.jobid = None
+        self.jobInfo : [JobInfo] = None
         self.MDSDataObj_lst: List[MDSDataObj] = []
         self.OSSDataObj_lst: List[OSSDataObj] = []
         self.FileOpObj_lst: List[FileOpObj] = []
         self.__MDSDataObj_keys: List[float] = []
         self.__OSSDataObj_keys: List[float] = []
         self.__FileOpObj_keys: List[float] = []
+
+    #
+    # update the jobInfo object
+    def updateJobInfo(self, jobInfo):
+        self.jobInfo = jobInfo
 
     # This function receives any type of MDSDataObj, OSSDataObj, or FileOpObj
     # objects and uses the timestamp attribute as the key to sort them while

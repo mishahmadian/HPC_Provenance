@@ -30,10 +30,10 @@ class UGEAccountingInfo:
             rec_counter = self.__maxReadLine
 
             while jobIdLst and rec_counter:
+                # Write off the max count
+                rec_counter -= 1
                 try:
                     acctRec = ugeAcctFile.readline()
-                    # Write off the max count
-                    rec_counter -= 1
                     # Skip comments
                     if not acctRec.strip() or acctRec.startswith('#'):
                         continue

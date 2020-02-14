@@ -56,6 +56,7 @@ class UGE:
                 jobInfo = scheduler.UGEJobInfo()
                 jobInfo.jobid = jobid
                 jobInfo.taskid = taskId
+                jobInfo.sched_type = 'uge'
                 jobInfo.status = scheduler.UGEJobInfo.Status(
                     {'r' : 1, 'qw' : 2, 'd' : 3, 'dr' : 3, 'E' : 4, 'Eqw' : 4}.get(data['state'], 5)
                 )
@@ -116,9 +117,10 @@ class UGE:
         #   - action: what type of actions should RPC call does
         #   - data: a list of data that has to be passed to that particular action
         request = json.dumps({'action' : 'uge_acct', 'data' : job_task_id_lst})
-        # Call the server RPC and receive the response as String
+        # Call the server RPC and receive the response as String\
         response = serverCon.rpc_call(rpc_queue, request)
-        if response.strip():
+
+        if response.strip() != 'NONE':
             # The response from UGE Accounting server would be a large string separated by [^@]
             jobRecLst = response.split('[^@]')
             # Iterate over each record in accounting data from UGE server
@@ -129,7 +131,8 @@ class UGE:
                 jobInfo = scheduler.UGEJobInfo()
                 jobInfo.jobid = jobRecArray[5]
                 jobInfo.cluster = cluster
-                jobInfo.taskid = jobRecArray[35]
+                jobInfo.sched_type = 'uge'
+                jobInfo.taskid = (jobRecArray[35] if int(jobRecArray[35]) else None)
                 jobInfo.status = scheduler.UGEJobInfo.Status.FINISHED
                 jobInfo.jobName = jobRecArray[4]
                 jobInfo.queue = jobRecArray[0]
@@ -145,13 +148,23 @@ class UGE:
                 jobInfo.command = jobRecArray[51]
                 jobInfo.cpu = jobRecArray[36]
                 jobInfo.io = jobRecArray[38]
+                jobInfo.ioops = jobRecArray[53]
                 jobInfo.iow = jobRecArray[40]
                 jobInfo.maxvmem = jobRecArray[42]
                 jobInfo.mem = jobRecArray[37]
-                jobInfo.wallclock = jobRecArray[13]
+                jobInfo.wallclock = jobRecArray[52]
                 jobInfo.failed_no = jobRecArray[11]
-                if jobRecArray[13].strip() != 'NONE':
-                    jobInfo.q_del.extend(jobRecArray[13].split(','))
+                if jobRecArray[46].strip() != 'NONE':
+                    jobInfo.q_del.extend(jobRecArray[46].split(','))
+
+                for option in jobRecArray[39].split():
+                    if 'h_vmem=' in option:
+                        jobInfo.h_vmem = option.split('=')[1].strip()
+                    if 'h_rt=' in option:
+                        jobInfo.h_rt = option.split('=')[1].strip()
+                    if 's_rt=' in option:
+                        jobInfo.s_rt = option.split('=')[1].strip()
+
                 # Append the UGEJobInfo object into the list
                 jobInfoLst.append(jobInfo)
 
@@ -172,6 +185,7 @@ class UGE:
             # Map the cluster_jobId to a dict={cluster : [jobId...]}
             job_req_map = {}
             for item in job_req_list:
+                print(item)
                 cluster, job_task_id = item.split('_')
                 if not job_req_map.get(cluster):
                     job_req_map[cluster] = [job_task_id]
@@ -182,13 +196,16 @@ class UGE:
             # put the responses (list of JobInfo) in acctJobInfoRes_Q
             for cluster in job_req_map.keys():
                 # Call UGE Accounting RPC
-                jobInfoLst: List['scheduler.UGEJobInfo'] = self.__getUGEAcctJobInfo(cluster, job_req_map.get(cluster))
+                print(job_req_map.get(cluster))
+                jobInfoLst: List['scheduler.UGEJobInfo'] = \
+                    self.__getUGEAcctJobInfo(cluster, job_req_map.get(cluster))
                 # Put items in Queue
                 for jobInfo in jobInfoLst:
+                    print(jobInfo)
                     acctJobInfoRes_Q.put(jobInfo)
 
             # Wait the amount of time that is defined under [uge] section
-            self.__event.wait(self.config.getAccointingIntv())
+            self.__event.wait(self.config.getUGEAcctRPCIntv())
 
 #
 # In any case of Error, Exception, or Mistake UGEServiceException will be raised
@@ -201,20 +218,20 @@ class UGEServiceException(Exception):
     def getMessage(self):
         return self.message
 
-if __name__ == "__main__":
-    config = ServerConfig()
-    cluster_inx = 0
-    uge_ip = config.getUGE_Addr()[cluster_inx]
-    uge_port = config.getUGE_Port()[cluster_inx]
-    jobId = sys.argv[1]
-    taskid = None
-    if len(sys.argv) > 2:
-        taskid = sys.argv[2]
-    jobinfo = UGERest.getUGEJobInfo(uge_ip, uge_port, jobId, taskid)
-
-    if jobinfo:
-        for itm in [atr for atr in dir(jobinfo) if (not atr.startswith('__'))
-                                                  and (not callable(getattr(jobinfo, atr)))]:
-            print(itm + " --> " + str(getattr(jobinfo, itm)))
-    else:
-        UGEAccounting.getUGEJobInfo('genius', jobid, taskid)
+# if __name__ == "__main__":
+#     config = ServerConfig()
+#     cluster_inx = 0
+#     uge_ip = config.getUGE_Addr()[cluster_inx]
+#     uge_port = config.getUGE_Port()[cluster_inx]
+#     jobId = sys.argv[1]
+#     taskid = None
+#     if len(sys.argv) > 2:
+#         taskid = sys.argv[2]
+#     jobinfo = UGERest.getUGEJobInfo(uge_ip, uge_port, jobId, taskid)
+#
+#     if jobinfo:
+#         for itm in [atr for atr in dir(jobinfo) if (not atr.startswith('__'))
+#                                                   and (not callable(getattr(jobinfo, atr)))]:
+#             print(itm + " --> " + str(getattr(jobinfo, itm)))
+#     else:
+#         UGEAccounting.getUGEJobInfo('genius', jobid, taskid)
