@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 if [ -n "$JOB_SCRIPT" ]; then
-	# Exit if job is a QLOGIN call, then ignore it 
+	# Exit if job is a QLOGIN call, then ignore it
 	if [ "$JOB_SCRIPT" != "QLOGIN" ]; then
 		UGE_SPOOL_SCRIPT="/export/uge/default/spool/${HOSTNAME//.localdomain/}/job_scripts/$JOB_ID"
 		# Generate the MY_JOB_ID variable for the Provenance/Lustre_Jobstat
@@ -10,7 +10,7 @@ if [ -n "$JOB_SCRIPT" ]; then
 		else
 			MY_JOB_ID="genius_uge_${JOB_ID}"
 		fi
-		# Add MY_JOB_ID to JOB_SCRIPT if the it is not a binary job
+		# Add MY_JOB_ID to JOB_SCRIPT if it is not a binary job
 		# This method comes true if job is not binary 
 		# (no other way to check binary jobs in Prolog"
 		if [ -e "$JOB_SCRIPT" ] && [ "$JOB_SCRIPT" = "$UGE_SPOOL_SCRIPT" ]; then

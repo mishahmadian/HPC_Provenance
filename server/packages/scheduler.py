@@ -139,7 +139,8 @@ class JobInfo(object):
     # This function returns a unique ID for every objects with the same JobID, Scheduler, and cluster
     def uniqID(self):
         # calculate the MD5 hash
-        obj_id = ''.join(filter(None, [self.sched_type, self.cluster, self.jobid, self.taskid]))
+        obj_id = ''.join(filter(lambda x: x not in [None, 0, '0'],
+                                [self.sched_type, self.cluster, self.jobid, self.taskid]))
         hash_id = hashlib.md5(obj_id.encode(encoding='UTF=8'))
         return hash_id.hexdigest()
     #

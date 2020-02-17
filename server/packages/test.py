@@ -602,6 +602,6 @@ acctRec = accounting.split(':')
 # print(queue + "  " + str(host))
 
 jobid = '123'
-taskid = None
+taskid = '01'
 myname = 'misha'
-print('_'.join(filter(None, [jobid, taskid, myname])))
+print('_'.join(filter(lambda x: x not in [None, 0, '0'], [jobid, taskid, myname])))
