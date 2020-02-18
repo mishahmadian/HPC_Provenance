@@ -15,9 +15,9 @@ from file_io_stats import MDSDataObj, OSSDataObj
 from exceptions import ProvenanceExitExp
 from file_op_logs import FileOpObj
 from bisect import bisect_left
-from typing import Dict, List
 from tabulate import tabulate
-import time
+from typing import List
+import time, os
 
 #------ Global Variable ------
 # Timer Value
@@ -45,6 +45,10 @@ class Aggregator(Process):
             print(confExp.getMessage())
             self.event_flag.set()
 
+        except JobSchedulerException as jobSchedExp:
+            print(jobSchedExp.getMessage())
+            self.event_flag.set()
+
 
     # Implement Process.run()
     def run(self):
@@ -62,13 +66,16 @@ class Aggregator(Process):
             timer.setDaemon(True)
             #==timer.start()
 
+            # Create a shard Dictionary object which allows three process to update their values
+            provFSTbl = Manager().dict()
+
             while not self.event_flag.is_set():
                 # Record the current timestamp
                 self.currentTime = time.time()
                 # a list of Processes
                 procList: List[Process] = []
                 # Create a shard Dictionary object which allows three process to update their values
-                provFSTbl = Manager().dict()
+                #===provFSTbl = Manager().dict()
                 # Manage critical sections
                 aggregatorLock = Lock()
                 # reset the Times Up signal for all process
@@ -142,18 +149,24 @@ class Aggregator(Process):
                             if not provFSTbl.get(uniq_id):
                                 provFSTbl[uniq_id] = provObjMngr.ProvenanceObj()
                                 # create an empty JobInfo object
-                                # jobInfo = jobInfo
-                                # jobInfo.cluster = obj_Q.cluster
-                                # jobInfo.sched = obj_Q.sched
-                                # jobInfo.jobid = obj_Q.jobId
-                                # jobInfo.taskid = (obj_Q.taskid if obj_Q.taskid else None)
-                                # jobInfo.status = JobInfo.Status.UNDEF
-                                # provFSTbl._callmethod('__getitem__', (uniq_id,)).updateJobInfo(jobInfo)
+                                jobInfo = JobInfo()
+                                jobInfo.cluster = obj_Q.cluster
+                                jobInfo.sched = obj_Q.sched_type
+                                jobInfo.jobid = obj_Q.jobid
+                                jobInfo.taskid = (obj_Q.taskid if obj_Q.taskid else None)
+                                jobInfo.status = JobInfo.Status.NONE
+                                provFSTbl._callmethod('__getitem__', (uniq_id,)).updateJobInfo(jobInfo)
 
                         # Add a request in jobInfo_Q to get information from corresponding job scheduler
-                        job_info = '_'.join([obj_Q.cluster, obj_Q.sched, obj_Q.jobId +
-                                             ("." + obj_Q.taskid if obj_Q.taskid else "")])
-                        jobInfo_Q.put(job_info)
+                        try:
+                            job_info = '_'.join([obj_Q.cluster, obj_Q.sched_type, obj_Q.jobid +
+                                                 ("." + obj_Q.taskid if obj_Q.taskid else "")])
+                            jobInfo_Q.put(job_info)
+                        except TypeError:
+                            print("***** Type Error ******")
+                            print(f"obj_Q.cluster={obj_Q.cluster}  obj_Q.sched_type={obj_Q.sched_type}  "
+                                  f"obj_Q.jobid={obj_Q.jobid},  obj_Q.taskid={obj_Q.taskid}  obj_Q.taskid={obj_Q.taskid}")
+
                         # Insert the corresponding object into its relevant list (sorted by timestamp)
                         # the _callmethod of Proxy class will take care of the complex object shared between processes
                         provFSTbl._callmethod('__getitem__', (uniq_id,)).insert_sorted(obj_Q)
@@ -194,61 +207,59 @@ class Aggregator(Process):
     @staticmethod
     def __tableView(provFSTbl : 'DictProxy') -> None:
         provDict = provFSTbl._getvalue()
-        for objs in provDict.values():
-            mdsLst = objs.MDSDataObj_lst
-            #print("jobId= " + str(objs.jobid) + "  mdsLst: " + str(len(mdsLst)))
-            # MDS
-            if mdsLst:
-                print("jobIds= " + str([i.jobid for i in mdsLst]) + "  mdsLst: " + str(len(mdsLst)))
-                mdsObj = mdsLst[-1]
-                mdsTbl = []
-                for attr in [atr for atr in dir(mdsObj) if (not atr.startswith('__'))
-                                                          and (not callable(getattr(mdsObj, atr)))]:
-                    mdsTbl.append([attr, getattr(mdsObj, attr)])
+        ptable = []
+        jobAttrs = []
+        mdsAttrs = []
+        ossAttrs = []
+        fopAttrs = []
 
-                with open("../outputs/mds.o" + objs.jobid, "w") as fmds:
-                    fmds.write(tabulate(mdsTbl, headers=["Attribute:", "Value:"], tablefmt="github") + "\n")
+        # find last object
+        provenObj = None
+        for obj in provDict.values():
+            if provenObj is None:
+                provenObj = obj
+                continue
 
-            # OSS
-            ossLst = objs.OSSDataObj_lst
-            #print("jobId= " + str(objs.jobid) + "  ossLst: " + str(len(ossLst)))
-            if ossLst:
-                print("jobIds= " + str([i.jobid for i in ossLst]) + "  ossLst: " + str(len(ossLst)))
-                ossobj = ossLst[-1]
-                ossTbl = []
-                for attr in [atr for atr in dir(ossobj) if (not atr.startswith('__'))
-                                                          and (not callable(getattr(ossobj, atr)))]:
-                    ossTbl.append([attr, getattr(ossobj, attr)])
+            if obj.jobInfo.jobid and provenObj.jobInfo.jobid:
+                if int(obj.jobInfo.jobid) > int(provenObj.jobInfo.jobid):
+                    provenObj = obj
 
-                if ossobj.oss_host == "oss1":
-                    with open("../outputs/oss1.o" + objs.jobid, "w") as foss1:
-                        foss1.write(tabulate(ossTbl, headers=["Attribute:", "Value:"], tablefmt="github") + "\n")
+        jobInfo = provenObj.jobInfo
+        mdsObj = provenObj.MDSDataObj_lst[-1] if provenObj.MDSDataObj_lst else None
+        ossobj = provenObj.OSSDataObj_lst[-1] if provenObj.OSSDataObj_lst else None
+        fopObj = provenObj.FileOpObj_lst[-1] if provenObj.FileOpObj_lst else None
+
+        if jobInfo:
+            jobAttrs = [atr for atr in dir(jobInfo) if (not atr.startswith('__')) and (not callable(getattr(jobInfo, atr)))]
+
+        if mdsObj:
+            mdsAttrs = [atr for atr in dir(mdsObj) if (not atr.startswith('__')) and (not callable(getattr(mdsObj, atr)))]
+
+        if ossobj:
+            ossAttrs = [atr for atr in dir(ossobj) if (not atr.startswith('__')) and (not callable(getattr(ossobj, atr)))]
+
+        if fopObj:
+            fopAttrs = [atr for atr in dir(fopObj) if (not atr.startswith('__')) and (not callable(getattr(fopObj, atr)))]
+
+        # find largest list
+        maxAttsLen = max([len(jobAttrs), len(mdsAttrs), len(ossAttrs), len(fopAttrs)])
+        allAttrObjs = [jobAttrs, mdsAttrs, ossAttrs, fopAttrs]
+        allObjs = [jobInfo, mdsObj, ossobj, fopObj]
+        # Create pTable
+        for inx in range(maxAttsLen):
+            record = []
+            in_inx = 0
+            for objAttrs in allAttrObjs:
+                if inx < len(objAttrs):
+                    record.extend([objAttrs[inx], str(getattr(allObjs[in_inx], objAttrs[inx])), "*"])
                 else:
-                    with open("../outputs/oss2.o" + objs.jobid, "w") as foss2:
-                        foss2.write(tabulate(ossTbl, headers=["Attribute:", "Value:"], tablefmt="github") + "\n")
+                    record.extend(["", "", "*"])
+                in_inx += 1
+            ptable.append(record[:-1])
 
-             # ChangeLogs:
-            """
-                        if not os.path.exists("../outputs/fileOP.o"):
-                with open("../outputs/fileOP.o" + objs.jobid, "w") as fchlog:
-                    fchlog.write("JobID : [{}]\n".format(objs.jobid))
-                    fchlog.write(tabulate([], headers=["File", "Operation", "Parent", "Timestamp", "MDT Target"],
-                                                                                                tablefmt="github"))
-                    #fchlog.close()
-
-            """
-
-            flogLst = objs.FileOpObj_lst
-            if flogLst:
-                flogTbl = []
-                for flogObj in flogLst:
-                    parent = flogObj.parent_path
-                    if not parent:
-                        parent = "----"
-                    flogTbl.append([flogObj.target_path, flogObj.op_type, parent, flogObj.timestamp, flogObj.mdtTarget])
-
-                with open("../outputs/fileOP.o" + objs.jobid, "a") as fchlog:
-                    fchlog.write(tabulate(flogTbl, tablefmt="plain") + "\n")
+        os.system("tset")
+        print(tabulate(ptable, headers=["Job Info:", "Value:", "*", "MDS:", "Value:", "*", "OSS:", "Value:", "*",
+                                        "File OP:", "Value:"], tablefmt="fancy_grid"))
 
 
     # Timer function to be used in a thread inside this process
@@ -274,7 +285,7 @@ class Aggregator(Process):
     #
     class _ProvenanceObjProxy(NamespaceProxy):
         # Specify which methods can be exposed to the outside
-        _exposed_ = ('__getattribute__', '__setattr__', '__delattr__', 'insert_sorted')
+        _exposed_ = ('__getattribute__', '__setattr__', '__delattr__', 'insert_sorted', 'updateJobInfo')
 
         # Create the proxy method that will be shared/called among multiple processes
         def updateJobInfo(self, jobInfo):

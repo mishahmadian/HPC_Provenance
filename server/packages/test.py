@@ -600,8 +600,11 @@ acctRec = accounting.split(':')
 # queue = 'test'
 # host = myq.split(',')
 # print(queue + "  " + str(host))
+from tabulate import tabulate
+table = [['mydata', 'misha', '*', 'test', 'test2'], ['mydata', 'misha', '*', 'test', 'test2'], ['mydata', 'misha', '*', 'test', 'test2']]
+print(tabulate(table, headers=["Job Items:", "Value:", "*", "OSS Items:", "Value:"], tablefmt="fancy_grid"))
 
-jobid = '123'
-taskid = '01'
-myname = 'misha'
-print('_'.join(filter(lambda x: x not in [None, 0, '0'], [jobid, taskid, myname])))
+mdsarr = ['123', '456', 'misha']
+ossarr = ['misha', '12', 134]
+mxlen = max([len(mdsarr), len(ossarr)])
+print(mdsarr[:-1])

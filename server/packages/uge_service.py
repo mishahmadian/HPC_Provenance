@@ -185,7 +185,6 @@ class UGE:
             # Map the cluster_jobId to a dict={cluster : [jobId...]}
             job_req_map = {}
             for item in job_req_list:
-                print(item)
                 cluster, job_task_id = item.split('_')
                 if not job_req_map.get(cluster):
                     job_req_map[cluster] = [job_task_id]
@@ -196,12 +195,10 @@ class UGE:
             # put the responses (list of JobInfo) in acctJobInfoRes_Q
             for cluster in job_req_map.keys():
                 # Call UGE Accounting RPC
-                print(job_req_map.get(cluster))
                 jobInfoLst: List['scheduler.UGEJobInfo'] = \
                     self.__getUGEAcctJobInfo(cluster, job_req_map.get(cluster))
                 # Put items in Queue
                 for jobInfo in jobInfoLst:
-                    print(jobInfo)
                     acctJobInfoRes_Q.put(jobInfo)
 
             # Wait the amount of time that is defined under [uge] section

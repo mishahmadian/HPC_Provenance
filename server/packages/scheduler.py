@@ -95,7 +95,7 @@ class JobScheduler:
         if jobInfo:
             # Complete the Object
             jobInfo.cluster = cluster
-            jobInfo.sched_type = sched
+            jobInfo.sched_type = 'uge'
             return jobInfo
 
         # -------------- UGE Accounting Request -------------------------
@@ -110,7 +110,7 @@ class JobScheduler:
             # Then, we create an empty JobInfo object with UNDEF status and return it
             jobInfo = UGEJobInfo()
             jobInfo.cluster = cluster
-            jobInfo.sched = sched
+            jobInfo.sched_type = sched
             jobInfo.jobid = jobId
             jobInfo.taskid = (taskid if taskid else None)
             jobInfo.status = JobInfo.Status.UNDEF
