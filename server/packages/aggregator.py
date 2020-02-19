@@ -158,14 +158,9 @@ class Aggregator(Process):
                                 provFSTbl._callmethod('__getitem__', (uniq_id,)).updateJobInfo(jobInfo)
 
                         # Add a request in jobInfo_Q to get information from corresponding job scheduler
-                        try:
-                            job_info = '_'.join([obj_Q.cluster, obj_Q.sched_type, obj_Q.jobid +
-                                                 ("." + obj_Q.taskid if obj_Q.taskid else "")])
-                            jobInfo_Q.put(job_info)
-                        except TypeError:
-                            print("***** Type Error ******")
-                            print(f"obj_Q.cluster={obj_Q.cluster}  obj_Q.sched_type={obj_Q.sched_type}  "
-                                  f"obj_Q.jobid={obj_Q.jobid},  obj_Q.taskid={obj_Q.taskid}  obj_Q.taskid={obj_Q.taskid}")
+                        job_info = '_'.join([obj_Q.cluster, obj_Q.sched_type, obj_Q.jobid +
+                                             ("." + obj_Q.taskid if obj_Q.taskid else "")])
+                        jobInfo_Q.put(job_info)
 
                         # Insert the corresponding object into its relevant list (sorted by timestamp)
                         # the _callmethod of Proxy class will take care of the complex object shared between processes
@@ -198,8 +193,10 @@ class Aggregator(Process):
                 jobInfo : JobInfo = jobScheduler.getJobInfo(cluster, sched, jobid, taskid)
                 # Get the  JobInfo Unique ID
                 uniq_id = jobInfo.uniqID()
-                # Update the corresponding object in Provenance Table with this JobInfo object
-                provFSTbl._callmethod('__getitem__', (uniq_id,)).updateJobInfo(jobInfo)
+                if provFSTbl._callmethod('__getitem__', (uniq_id,)).jobInfo.status \
+                        is not JobInfo.Status.FINISHED:
+                    # Update the corresponding object in Provenance Table with this JobInfo object
+                    provFSTbl._callmethod('__getitem__', (uniq_id,)).updateJobInfo(jobInfo)
 
             self.timesUp.wait(1)
 
@@ -257,7 +254,7 @@ class Aggregator(Process):
                 in_inx += 1
             ptable.append(record[:-1])
 
-        os.system("tset")
+        os.system("reset")
         print(tabulate(ptable, headers=["Job Info:", "Value:", "*", "MDS:", "Value:", "*", "OSS:", "Value:", "*",
                                         "File OP:", "Value:"], tablefmt="fancy_grid"))
 

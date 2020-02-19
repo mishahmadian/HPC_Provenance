@@ -97,17 +97,21 @@ class IOStatsListener(Process):
         ossDataObj : OSSDataObj
         # make a unique set of JobIds which are coming from MDSs
         for mdsStatObj in mdsStatObjLst:
-            jobid = str(mdsStatObj.jobid)
-            if mdsStatObj.taskid:
-                jobid = '.'.join([jobid, str(mdsStatObj.taskid)])
-            jstat_curr_ids.add(jobid)
+            clus_sched_jtid = mdsStatObj.cluster + '_' + \
+                              mdsStatObj.sched_type + '_' + \
+                              str(mdsStatObj.jobid) + \
+                              ("." + str(mdsStatObj.taskid) if mdsStatObj.taskid else "")
+
+            jstat_curr_ids.add(clus_sched_jtid)
 
         # make a unique set of JobIds which are coming from OSSs
         for ossDataObj in ossStatObjLst:
-            jobid = str(ossDataObj.jobid)
-            if ossDataObj.taskid:
-                jobid = '.'.join([jobid, str(ossDataObj.taskid)])
-            jstat_curr_ids.add(jobid)
+            clus_sched_jtid = ossDataObj.cluster + '_' + \
+                              ossDataObj.sched_type + '_' + \
+                              str(ossDataObj.jobid) + \
+                              ("." + str(ossDataObj.taskid) if ossDataObj.taskid else "")
+
+            jstat_curr_ids.add(clus_sched_jtid)
 
         # if a finished_Job_Id does not appear among the current list of JobStats
         # then it no more needs to be in the list of Finished jobs
@@ -134,12 +138,8 @@ class IOStatsListener(Process):
         jobstatLst = jobstatLst[0].split('-')[1:]
         # Iterate over the jobstatLst
         for jobstat in jobstatLst:
-            # Create new MDSDataObj
-            mdsObj = MDSDataObj()
-            # Timestamp recorded on agent side
-            mdsObj.timestamp = timestamp
-            # The host name of the server
-            mdsObj.mds_host = serverHost
+            # define mdsObj but do not initiate it
+            mdsObj = None
             # Parse the JobStat output line by line
             for line in jobstat.splitlines():
                 # skip empty lines
@@ -156,7 +156,8 @@ class IOStatsListener(Process):
                     # then ignore the Jobstats data of this job
                     if jobid in finished_jobIds:
                         break
-
+                    # Create new MDSDataObj
+                    mdsObj = MDSDataObj()
                     # if the id format is not compatible with "cluster_scheduler_ID" then it's a process id
                     if '_' not in jobid:
                         mdsObj.procid = jobid
@@ -180,9 +181,14 @@ class IOStatsListener(Process):
                     value = line.split(':')[2].split(',')[0].strip()
                     setattr(mdsObj, attr, value)
 
-            # Put the mdsObj into a list
-            #----> print("{} : {}".format(serverHost, mdsObj.jobid))
-            mdsObjLst.append(mdsObj)
+            if mdsObj:
+                # Timestamp recorded on agent side
+                mdsObj.timestamp = timestamp
+                # The host name of the server
+                mdsObj.mds_host = serverHost
+                # Put the mdsObj into a list
+                mdsObjLst.append(mdsObj)
+
         # Return the JobStat output in form of MDSDataObj data type
         return mdsObjLst
 
@@ -202,12 +208,8 @@ class IOStatsListener(Process):
         jobstatLst = jobstatLst[0].split('-')[1:]
         # Iterate over the jobStatLst
         for jobstat in jobstatLst:
-            # Create new OSSDataObj
-            ossObj = OSSDataObj()
-            # Timestamp recorded on agent side
-            ossObj.timestamp = timestamp
-            # The host name of the server
-            ossObj.oss_host = serverHost
+            # define ossObj but do not initiate it
+            ossObj = None
             # Parse the JobStat output line by line
             for line in jobstat.splitlines():
                 # skip empty lines
@@ -224,7 +226,8 @@ class IOStatsListener(Process):
                     # then ignore the Jobstats data of this job
                     if jobid in finished_jobIds:
                         break
-
+                    # Create new OSSDataObj
+                    ossObj = OSSDataObj()
                     # if the id format is not compatible with "cluster_scheduler_ID" then it's a process id
                     if '_' not in jobid:
                         ossObj.procid = jobid
@@ -261,9 +264,14 @@ class IOStatsListener(Process):
                     value = line.split(':')[2].split(',')[0].strip()
                     setattr(ossObj, attr, value)
 
-            # Put the ossObj into a list
-            #---->print("{} : {}".format(serverHost, ossObj.jobid))
-            ossObjLst.append(ossObj)
+            if ossObj:
+                # Timestamp recorded on agent side
+                ossObj.timestamp = timestamp
+                # The host name of the server
+                ossObj.oss_host = serverHost
+                # Put the ossObj into a list
+                ossObjLst.append(ossObj)
+
         # Rerun the JobStat output in form of OSSDataObj data type
         return ossObjLst
 
@@ -303,6 +311,10 @@ class MDSDataObj(object):
 
     # This function returns a unique ID for every objects with the same JobID, Scheduler, and cluster
     def uniqID(self):
+        if self.procid:
+            # No hash for this object if jobID is not defined
+            return None
+        # calculate the MDS hash
         obj_id = ''.join(filter(None, [self.sched_type, self.cluster, self.jobid, self.taskid]))
         hash_id = hashlib.md5(obj_id.encode(encoding='UTF=8'))
         return hash_id.hexdigest()
@@ -349,7 +361,7 @@ class OSSDataObj(object):
         if self.procid:
             # No hash for this object if jobID is not defined
             return None
-        # calculate the MD5 hash
+        # calculate the OSS hash
         obj_id = ''.join(filter(None, [self.sched_type, self.cluster, self.jobid, self.taskid]))
         hash_id = hashlib.md5(obj_id.encode(encoding='UTF=8'))
         return hash_id.hexdigest()

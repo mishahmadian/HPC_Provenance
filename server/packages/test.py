@@ -602,9 +602,11 @@ acctRec = accounting.split(':')
 # print(queue + "  " + str(host))
 from tabulate import tabulate
 table = [['mydata', 'misha', '*', 'test', 'test2'], ['mydata', 'misha', '*', 'test', 'test2'], ['mydata', 'misha', '*', 'test', 'test2']]
-print(tabulate(table, headers=["Job Items:", "Value:", "*", "OSS Items:", "Value:"], tablefmt="fancy_grid"))
+#print(tabulate(table, headers=["Job Items:", "Value:", "*", "OSS Items:", "Value:"], tablefmt="fancy_grid"))
 
-mdsarr = ['123', '456', 'misha']
-ossarr = ['misha', '12', 134]
-mxlen = max([len(mdsarr), len(ossarr)])
-print(mdsarr[:-1])
+myset = set()
+#myset.add('misha_123')
+#myset.add('misha_345')
+#myset.add('misha_123')
+print(str(myset))
+
