@@ -41,7 +41,8 @@ class ServerConfig:
                   'io_listener' : ['exchange', 'queue'],
                   'changelogs' : ['parallel','interval', 'users'],
                   'aggregator' : ['interval', 'timer_intv'],
-                  '*uge' : ['clusters', 'address', 'port', 'acct_interval']}
+                  '*uge' : ['clusters', 'address', 'port', 'acct_interval'],
+                  'mongodb' : ['host', 'port', 'auth_mode', 'username', 'password', 'database']}
         # Iterate over the Sections in config file
         for section in config.keys():
             # all the sections with '*' are optional
@@ -227,6 +228,36 @@ class ServerConfig:
     # Return: Float
     def getUGEAcctRPCIntv(self) -> float:
         return self.__getConfigValue('uge', 'acct_interval', float)
+
+    # Get the hostname of MongoDB
+    # Return: String
+    def getMongoHost(self) -> str:
+        return self.__getConfigValue('mongodb', 'host', str)
+
+    # Get the hot port number of MongoDB
+    # Return: int
+    def getMongoPort(self) -> int:
+        return self.__getConfigValue('mongodb', 'port', int)
+
+    # Get the MongoDB authentication mode
+    # Return: String
+    def getMongoAuthMode(self) -> str:
+        return self.__getConfigValue('mongodb', 'auth_mode', str)
+
+    # Get the MongoDB username
+    # Return: String
+    def getMongoUser(self) -> str:
+        return self.__getConfigValue('mongodb', 'username', str)
+
+    # Get the MongoDB password
+    # Return: String
+    def getMongoPass(self) -> str:
+        return self.__getConfigValue('mongodb', 'password', str)
+
+    # Get the MongoDB source database
+    # Return: String
+    def getMongoSrcDB(self) -> str:
+        return self.__getConfigValue('mongodb', 'database', str)
 
 
 #

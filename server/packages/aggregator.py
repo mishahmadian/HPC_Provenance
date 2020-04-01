@@ -10,13 +10,14 @@ from multiprocessing.managers import BaseManager, NamespaceProxy, DictProxy
 from scheduler import JobScheduler, JobInfo, JobSchedulerException
 from multiprocessing import Process, Event, Manager, Lock, Queue
 from config import ServerConfig, ConfigReadExcetion
+from db_manager import MongoDB, DBManagerException
 from threading import Event as Event_Thr, Thread
 from file_io_stats import MDSDataObj, OSSDataObj
 from exceptions import ProvenanceExitExp
 from file_op_logs import FileOpObj
 from bisect import bisect_left
 from tabulate import tabulate
-from typing import List
+from typing import List, Dict
 import time, os
 
 #------ Global Variable ------
@@ -24,7 +25,10 @@ import time, os
 timer_val = 0.0
 
 class Aggregator(Process):
-
+    """
+    Aggregate all MDS, OSS and File Operation data collected from different targets
+    and store them into various databases.
+    """
     def __init__(self, MSDStat_Q, OSSStat_Q, fileOP_Q):
         Process.__init__(self)
         self.MSDStat_Q = MSDStat_Q
@@ -36,10 +40,10 @@ class Aggregator(Process):
         self.currentTime = 0
         self.config = ServerConfig()
         try:
-            self.__interval = self.config.getAggrIntv()
-            self.__timerIntv = self.config.getAggrTimer()
+            self._interval = self.config.getAggrIntv()
+            self._timerIntv = self.config.getAggrTimer()
 
-            self.__jobScheduler = JobScheduler()
+            self._jobScheduler = JobScheduler()
 
         except ConfigReadExcetion as confExp:
             print(confExp.getMessage())
@@ -52,6 +56,10 @@ class Aggregator(Process):
 
     # Implement Process.run()
     def run(self):
+        """
+        Override the Process run function
+        :return: None
+        """
         # Register the ProvenanceObj to the Aggregator Manager along with the Proxy class
         self._AggregatorManager.register('ProvenanceObj', ProvenanceObj, self._ProvenanceObjProxy)
         # Start the Base manager
@@ -62,7 +70,7 @@ class Aggregator(Process):
             # Create a Timer Thread to be running for this process and change the
             # "timer_val" value every
             timer_flag = Event_Thr()
-            timer = Thread(target=self.__timer, args=(timer_flag, self.__timerIntv,))
+            timer = Thread(target=self._timer, args=(timer_flag, self._timerIntv,))
             timer.setDaemon(True)
             #==timer.start()
 
@@ -80,37 +88,54 @@ class Aggregator(Process):
                 aggregatorLock = Lock()
                 # reset the Times Up signal for all process
                 self.timesUp.clear()
+                #---------------------- AGGREGATE DATA -------------------------------
                 # Aggregate MDS IO Stats into the Provenance Table
-                procList.append(Process(target=self.__aggregateFIO, args=(provFSTbl, provenanceObjManager,
+                procList.append(Process(target=self._aggregateFIO, args=(provFSTbl, provenanceObjManager,
                                                                             aggregatorLock, self.MSDStat_Q,
                                                                             self.jobInfo_Q,)))
                 # Aggregate OSS IO Stats into the Provenance Table
-                procList.append(Process(target=self.__aggregateFIO, args=(provFSTbl, provenanceObjManager,
+                procList.append(Process(target=self._aggregateFIO, args=(provFSTbl, provenanceObjManager,
                                                                             aggregatorLock, self.OSSStat_Q,
                                                                             self.jobInfo_Q,)))
                 # Aggregate File Operations into the Provenance Table
-                procList.append(Process(target=self.__aggregateFIO, args=(provFSTbl, provenanceObjManager,
+                procList.append(Process(target=self._aggregateFIO, args=(provFSTbl, provenanceObjManager,
                                                                             aggregatorLock, self.fileOP_Q,
                                                                             self.jobInfo_Q,)))
                 # Aggregate Job Info(s) from Job Scheduler(s)
-                procList.append(Process(target=self.__aggregateJobs, args=(self.__jobScheduler, provFSTbl,
+                procList.append(Process(target=self._aggregateJobs, args=(self._jobScheduler, provFSTbl,
                                                                           self.jobInfo_Q,)))
 
                 # Start all the aggregator processes:
                 for proc in procList:
                     proc.daemon = True
                     proc.start()
+
                 # Keep the time interval
-                self.event_flag.wait(self.__interval)
+                self.event_flag.wait(self._interval)
                 # stop the processes for this interval
                 self.timesUp.set()
+
                 # wait for all processes to finish
                 for proc in procList:
                     proc.join()
 
+                #------------------------- STORE DATA INTO DATABASE ---------------------------
+                # Now dump the data into MonoDB
+                procDBList: List[Process] = [
+                    # Create a separate process for MongoDB
+                    Process(target=self._dump2MongoDB, args=(provFSTbl.copy(),))
+                ]
 
-                if len(provFSTbl):
-                    self.__tableView(provFSTbl)
+                # Start all DB Process
+                for procdb in procDBList:
+                    procdb.start()
+
+                # Wait for all Provenance Data Objects to be dumped into all databases
+                for procdb in procDBList:
+                    procdb.join()
+
+                # if len(provFSTbl):
+                #     self._tableView(provFSTbl)
 
             # Terminate timer after flag is set
             timer_flag.set()
@@ -122,10 +147,21 @@ class Aggregator(Process):
             self.timesUp.set()
             provenanceObjManager.shutdown()
 
-
-    # Aggregate and map all the MDS/OSS/Changelog IO  data to a set of unique objects based on Job ID
-    def __aggregateFIO(self, provFSTbl: 'DictProxy', provObjMngr : '_AggregatorManager',
+    #
+    # Aggregate File OPs and IO stats
+    #
+    def _aggregateFIO(self, provFSTbl: 'DictProxy', provObjMngr : '_AggregatorManager',
                          aggregatorLock, allFS_Q: Queue, jobInfo_Q : Queue):
+        """
+        Aggregate and map all the MDS/OSS/Changelog IO  data to a set of unique objects based on Job ID
+
+        :param provFSTbl: Multi-processing Manager Dict
+        :param provObjMngr: Proxy Object of ProvenanceObj
+        :param aggregatorLock: Process semaphor lock
+        :param allFS_Q: Any multi-processing queue contains the MDS/OSS/Changelog
+        :param jobInfo_Q: multi-processing queue of submitted jobs
+        :return: None - Store data into a dictionoray of ProvenanceObjs
+        """
         try:
             # Fill the provFSTbl dictionary up until the interval time is up
             while not self.timesUp.is_set():
@@ -173,10 +209,18 @@ class Aggregator(Process):
         except ProvenanceExitExp:
             pass
 
+    #
+    # Aggregate Job Info objects
+    #
+    def _aggregateJobs(self, jobScheduler: JobScheduler, provFSTbl: 'DictProxy', jobInfo_Q : Queue):
+        """
+        Aggregate the Job Info objects that come from Job Scheduler(s)
 
-    # Aggregate the Job Info objects that come from Job Scheduler(s)
-    def __aggregateJobs(self, jobScheduler: JobScheduler, provFSTbl: 'DictProxy', jobInfo_Q : Queue):
-
+        :param jobScheduler: JobScheduler Object
+        :param provFSTbl: Multi-processing Manager Dict
+        :param jobInfo_Q: multi-processing queue of submitted jobs
+        :return: None
+        """
         # Fill the provFSTbl dictionary up until the interval time is up
         while not self.timesUp.is_set():
             # all the MSDStat_Q, OSSStat_Q, and fileOP_Q are assumed as allFS_Q
@@ -200,9 +244,67 @@ class Aggregator(Process):
 
             self.timesUp.wait(1)
 
+    #
+    # Dump to MongoDB database
+    #
+    def _dump2MongoDB(self, provenData: Dict[str, 'ProvenanceObj']):
+        """
+        Store the aggregated Provenance Data into MongoDB
+            * Should be running as a separate process
+
+        :param provenData: Dict of ProvenanceObj
+        :return: None
+        """
+        # define mongodb
+        mongodb = None
+        try:
+            mongodb = MongoDB()
+            # Update the Provenance Objects in MongoDb. If they do not exist,
+            # then they will be inserted into db as a new document
+            for uid, provenObj in provenData.items():
+                # Update/Insert JobInfo
+                jobinfo = provenObj.jobInfo
+                update_query = {'uid' : uid} # Insert/Update one job per document
+                mongodb.update(MongoDB.Collections.JOB_INFO_COLL,
+                               update_query,
+                               jobinfo.to_dict())
+                # Update/Insert last collected MDS data
+                mdsObj = provenObj.MDSDataObj_lst[-1] if provenObj.MDSDataObj_lst else None
+                if mdsObj:
+                    # Insert/Update per each job running on each MDT of each MDS
+                    update_query = {'uid': uid, 'mds_host': mdsObj.mds_host, 'mdt_target': mdsObj.mdt_target}
+                    mongodb.update(MongoDB.Collections.MDS_STATS_COLL,
+                                   update_query,
+                                   mdsObj.to_dict())
+                # Update/Insert last collected OSS data
+                ossObj = provenObj.OSSDataObj_lst[-1] if provenObj.OSSDataObj_lst else None
+                if ossObj:
+                    # Insert/Update per each job running on each OST of each OSS
+                    update_query = {'uid': uid, 'mds_host': ossObj.oss_host, 'mdt_target': ossObj.ost_target}
+                    mongodb.update(MongoDB.Collections.OSS_STATS_COLL,
+                                   update_query,
+                                   ossObj.to_dict())
+                # Insert collected File Operations data (No update)
+                fopObj = provenObj.FileOpObj_lst
+                fopObj_lst = []
+                # Collect all file operations and insert all at once
+                for fopData in fopObj:
+                    fopObj_lst.append(fopData.to_dict())
+                # Insert all the fop object in one operation
+                mongodb.insert(MongoDB.Collections.FILE_OP_COLL, fopObj_lst)
+
+        except DBManagerException as dbExp:
+            pass
+
+        finally:
+            # Close the MongoClient
+            print("====== MongoDB Done =========\n ")
+            if mongodb:
+                mongodb.close()
+
 
     @staticmethod
-    def __tableView(provFSTbl : 'DictProxy') -> None:
+    def _tableView(provFSTbl : 'DictProxy') -> None:
         provDict = provFSTbl._getvalue()
         ptable = []
         jobAttrs = []
@@ -254,14 +356,14 @@ class Aggregator(Process):
                 in_inx += 1
             ptable.append(record[:-1])
 
-        os.system("reset")
+        os.system("reset && printf '\e[3J'")
         print(tabulate(ptable, headers=["Job Info:", "Value:", "*", "MDS:", "Value:", "*", "OSS:", "Value:", "*",
                                         "File OP:", "Value:"], tablefmt="fancy_grid"))
 
 
     # Timer function to be used in a thread inside this process
     @staticmethod
-    def __timer(timer_flag, timerIntv):
+    def _timer(timer_flag, timerIntv):
         while not timer_flag.is_set():
             global timer_val
             timer_val = time.time()
@@ -301,6 +403,10 @@ class Aggregator(Process):
 # from distributed servers and services
 #
 class ProvenanceObj(object):
+    """
+    The most important Provenance Object that holds the final aggregated form of collected data
+    before it gets dumpped into a database
+    """
     def __init__(self):
         self.jobInfo : [JobInfo] = None
         self.MDSDataObj_lst: List[MDSDataObj] = []

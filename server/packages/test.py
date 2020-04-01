@@ -604,9 +604,45 @@ from tabulate import tabulate
 table = [['mydata', 'misha', '*', 'test', 'test2'], ['mydata', 'misha', '*', 'test', 'test2'], ['mydata', 'misha', '*', 'test', 'test2']]
 #print(tabulate(table, headers=["Job Items:", "Value:", "*", "OSS Items:", "Value:"], tablefmt="fancy_grid"))
 
-myset = set()
-#myset.add('misha_123')
-#myset.add('misha_345')
-#myset.add('misha_123')
-print(str(myset))
+from db_manager import MongoDB
+
+# mongodb = MongoDB()
+# query = {"name" : "mytest", "lastname" : "testy1"}
+# data = {"name" : "test", "lastname" : "testy"}
+# mongodb.update(MongoDB.Collections.JOB_INFO_COLL, query, data)
+# mongodb.close()
+
+class TestObj(object):
+    def __init__(self):
+        self.id = 123
+        self.name = 'misha'
+        self.last = 'ahmadian'
+
+    def to_dict(self) -> dict:
+        attrDict = {}
+        # collect all available attributes
+        attrs = [atr for atr in dir(self) if (not atr.startswith('__')) and (not callable(getattr(self, atr)))]
+        for atr in attrs:
+            attrDict[atr] = getattr(self, atr)
+        #
+        return  attrDict
+
+class TestObj2(TestObj):
+    def __init__(self):
+        TestObj.__init__(self)
+        self.extera1 = '456'
+        self.extera2 = 890
+        self.my2 = None
+
+
+from scheduler import JobInfo
+from enum import Enum
+
+jobinfo = JobInfo()
+jobinfo.status = JobInfo.Status.ERROR
+jobinfo.jobid = "123"
+jobinfo.username = "misha"
+print(str(jobinfo.to_dict()))
+
+
 

@@ -249,6 +249,18 @@ class FileOpObj(object):
         hash_id = hashlib.md5(obj_id.encode(encoding='UTF=8'))
         return hash_id.hexdigest()
 
+    # Return a dictionary format of all attrs and their values
+    def to_dict(self) -> dict:
+        attrDict = {}
+        # collect all available attributes
+        attrs = [atr for atr in dir(self) if (not atr.startswith('__')) and (not callable(getattr(self, atr)))]
+        for attr in attrs:
+            attrDict[attr] = getattr(self, attr)
+        # append the unique ID
+        attrDict['uid'] = self.uniqID()
+        #
+        return attrDict
+
     # Overriding the Hash function for this object
     def __hash__(self):
         if self.procid:

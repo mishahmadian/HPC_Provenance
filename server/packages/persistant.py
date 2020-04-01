@@ -14,8 +14,12 @@ import fcntl
 
 class FinishedJobs:
     def __init__(self):
-        self.fJobs_file = "./fjobids.dat"
-        Path(self.fJobs_file).touch(exist_ok=True)
+        # Get the absolute path of finished job id file
+        self.fJobs_path = Path(__file__).parent.joinpath("finjobids.dat").absolute()
+        # Create it if it does not exist
+        Path(self.fJobs_path).touch(exist_ok=True)
+        # Get String posix format
+        self.fJobs_file = self.fJobs_path.as_posix()
 
     # Store the JobId of an already finished job
     def store(self, fJobId):

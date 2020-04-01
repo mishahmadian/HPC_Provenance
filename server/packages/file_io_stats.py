@@ -130,6 +130,7 @@ class IOStatsListener(Process):
         mdsObjLst: List[MDSDataObj] = []
         timestamp = data["timestamp"]
         serverHost = data["server"]
+        serverTarget = data["fstarget"]
         # Filter out a group of received JobStats of different jobs
         jobstatLst = data["output"].split("job_stats:")
         # drop the first element because its always useless
@@ -186,6 +187,8 @@ class IOStatsListener(Process):
                 mdsObj.timestamp = timestamp
                 # The host name of the server
                 mdsObj.mds_host = serverHost
+                # The MDT target
+                mdsObj.mdt_target = serverTarget
                 # Put the mdsObj into a list
                 mdsObjLst.append(mdsObj)
 
@@ -200,6 +203,7 @@ class IOStatsListener(Process):
         ossObjLst: List[OSSDataObj] = []
         timestamp = data["timestamp"]
         serverHost = data["server"]
+        serverTarget = data["fstarget"]
         # Filter out a group of received JobStats of different jobs
         jobstatLst = data["output"].split("job_stats:")
         # drop the first element because its always useless
@@ -269,6 +273,8 @@ class IOStatsListener(Process):
                 ossObj.timestamp = timestamp
                 # The host name of the server
                 ossObj.oss_host = serverHost
+                # The OST target
+                ossObj.ost_target = serverTarget
                 # Put the ossObj into a list
                 ossObjLst.append(ossObj)
 
@@ -282,6 +288,7 @@ class IOStatsListener(Process):
 class MDSDataObj(object):
     def __init__(self):
         self.mds_host = None
+        self.mdt_target = None
         self.timestamp = 0
         self.jobid = None
         self.taskid = None
@@ -319,6 +326,18 @@ class MDSDataObj(object):
         hash_id = hashlib.md5(obj_id.encode(encoding='UTF=8'))
         return hash_id.hexdigest()
 
+    # Return a dictionary format of all attrs and their values
+    def to_dict(self) -> dict:
+        attrDict = {}
+        # collect all available attributes
+        attrs = [atr for atr in dir(self) if (not atr.startswith('__')) and (not callable(getattr(self, atr)))]
+        for attr in attrs:
+            attrDict[attr] = getattr(self, attr)
+        # append the unique ID
+        attrDict['uid'] = self.uniqID()
+        #
+        return  attrDict
+
 
 #
 # Object class that holds the process data by "ioStats_OSS_decode".
@@ -327,6 +346,7 @@ class MDSDataObj(object):
 class OSSDataObj(object):
     def __init__(self):
         self.oss_host = None
+        self.ost_target = None
         self.timestamp = 0
         self.jobid = None
         self.taskid =None
@@ -365,6 +385,18 @@ class OSSDataObj(object):
         obj_id = ''.join(filter(None, [self.sched_type, self.cluster, self.jobid, self.taskid]))
         hash_id = hashlib.md5(obj_id.encode(encoding='UTF=8'))
         return hash_id.hexdigest()
+
+    # Return a dictionary format of all attrs and their values
+    def to_dict(self) -> dict:
+        attrDict = {}
+        # collect all available attributes
+        attrs = [atr for atr in dir(self) if (not atr.startswith('__')) and (not callable(getattr(self, atr)))]
+        for attr in attrs:
+            attrDict[attr] = getattr(self, attr)
+        # append the unique ID
+        attrDict['uid'] = self.uniqID()
+        #
+        return attrDict
 
 #
 # In case of error the following exception can be raised

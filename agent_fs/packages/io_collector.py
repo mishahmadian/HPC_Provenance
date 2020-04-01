@@ -38,20 +38,25 @@ class CollectIOstats(Thread):
         self.hostname = socket.gethostname()
         # Set JobStat cleanup interval
         if self.hostname in self.config.getMDS_hosts():
-            self.__setMaxAutoCleanup(self.config.getMaxJobstatAge())
+            self._setMaxAutoCleanup(self.config.getMaxJobstatAge())
 
     # Implement Thread.run()
     def run(self):
+        # Is this server MDS or OSS?
+        serverParam = self._getServerParam()
+        # What are MDT(s) or OST(s)
+        fsnames = self._getfsnames(serverParam)
+
         while not self.exit_flag.is_set():
             try:
-                serverParam = self.__getServerParam()
-                # Collecting JobStats from Lustre
-                jobstat_out = self.__getJobStats(serverParam)
-                # Put the jobStat output in thread safe Queue
-                if jobstat_out.strip():
-                    self.jobstat_Q.put(jobstat_out)
-                    # Clear JobStats logs immediately to free space
-                    ##-- self.__clearJobStats(serverParam)
+                for target in fsnames:
+                    # Collecting JobStats from Lustre
+                    jobstat_out = self._getJobStats(serverParam, target)
+                    # Put the jobStat output in thread safe Queue along with the fsname target
+                    if jobstat_out.strip():
+                        self.jobstat_Q.put((target, jobstat_out))
+                        # Clear JobStats logs immediately to free space
+                        ##-- self._clearJobStats(serverParam)
 
                 # Set time interval for Collecting IO stats
                 waitInterval = self.config.getJobstatsInterval()
@@ -62,7 +67,7 @@ class CollectIOstats(Thread):
                 self.exit_flag.set()
 
     # Load the Agent Settings from Agent.conf file
-    def __getServerParam(self):
+    def _getServerParam(self):
         if self.hostname in self.config.getMDS_hosts():
             return "mdt"
         elif self.hostname in self.config.getOSS_hosts():
@@ -70,16 +75,25 @@ class CollectIOstats(Thread):
         else:
             raise ConfigReadExcetion("This hostname is not valid . Please check the hostname in 'agent.config' file")
 
+    # Find the existing file system names to address the MDT and OST targets
+    def _getfsnames(self, serverParam):
+        fsname = subprocess.check_output("lctl list_param " + serverParam + ".*" , shell=True)
+        fsnames = fsname.encode(encoding='UTF=8').strip().split('\n')
+        for inx, val in enumerate(fsnames):
+            fsnames[inx] = val.split('.')[1].strip()
+        return fsnames
+
     # Read the Jobstats from Lustre logs
-    def __getJobStats(self, serverParam):
-        return subprocess.check_output("lctl get_param " + serverParam + ".*.job_stats | tail -n +2", shell=True)
+    def _getJobStats(self, serverParam, fsname):
+        param = '.'.join([serverParam, fsname, 'job_stats'])
+        return subprocess.check_output("lctl get_param " + param + " | tail -n +2", shell=True)
 
     # Clear the accumulated JobStats from Luster logs
-    def __clearJobStats(self, serverParam):
+    def _clearJobStats(self, serverParam):
         subprocess.check_output("lctl set_param " + serverParam + ".*.job_stats=clear", shell=True)
 
     # Set the Maximum auto-cleanup Interval for jobstats
-    def __setMaxAutoCleanup(self, interval):
+    def _setMaxAutoCleanup(self, interval):
         subprocess.check_output("lctl set_param *.*.job_cleanup_interval=" + interval, shell=True)
 
 
@@ -108,7 +122,8 @@ class PublishIOstats(Thread):
                 timestamp = time.time()
                 message_body = {"server" : self.hostname,
                                 "timestamp" : timestamp,
-                                "output": jobstat_msg}
+                                "fstarget" : jobstat_msg[0],
+                                "output": jobstat_msg[1]}
 
                 # Convert Message body dictionary to JSON format
                 message_json = json.dumps(message_body)
