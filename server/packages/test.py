@@ -398,14 +398,7 @@ except KeyboardInterrupt:
 except Exception as exp:
     print(str(exp))
 
-from communication import ServerConnection
-import json
 
-# request = json.dumps({'action' : 'uge_acct', 'data' : ['1091447.452']})
-# print("I'm Client: " + str(request))
-# serverCon = ServerConnection(is_rpc=True)
-# response = serverCon.rpc_call("genius_rpc_queue", request)
-# print(response)
 #print(str(['1', '2']))
 
 # jobid = '123'
@@ -638,11 +631,31 @@ class TestObj2(TestObj):
 from scheduler import JobInfo
 from enum import Enum
 
-jobinfo = JobInfo()
-jobinfo.status = JobInfo.Status.ERROR
-jobinfo.jobid = "123"
-jobinfo.username = "misha"
-print(str(jobinfo.to_dict()))
 
+# from config import ServerConfig
+# chlRecs = {'test-MDT0000' : [12, 36, 90, 34, 45]}
+# config = ServerConfig()
+# mdtTargets = config.getMdtTargets()
+# chLogUsers = config.getChLogsUsers()
+#
+# for mdtTarget in chlRecs:
+#     # find the corresponding Changelog User of the given MDT
+#     user = chLogUsers[mdtTargets.index(mdtTarget)]
+#     # Get the last record that should be deleted
+#     endRec = max(chlRecs.get(mdtTarget))
+#
+#     print(f"user: {user}  endRec={endRec}")
 
+# from communication import ServerConnection
+# import json
+#
+# request = json.dumps({'action' : 'uge_acct', 'data' : ['125.0', '675.1', '570.0', '133.0', '0.0']})
+# print("I'm Client: " + str(request.split('[^@]')))
+# serverCon = ServerConnection(is_rpc=True)
+# response = serverCon.rpc_call("genius_rpc_queue", request)
+# print("response -> " + response)
 
+import logger
+
+#logger.log(logger.Mode.APP_ASTART, "************ App Started ***********")
+logger.log(logger.Mode.AGGREGATOR, "[Error]_ Something bad happened")

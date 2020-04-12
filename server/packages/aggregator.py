@@ -7,17 +7,20 @@
  Misha ahmadian (misha.ahmadian@ttu.edu)
 """
 from multiprocessing.managers import BaseManager, NamespaceProxy, DictProxy
-from scheduler import JobScheduler, JobInfo, JobSchedulerException
+from .scheduler import JobScheduler, JobInfo, JobSchedulerException
 from multiprocessing import Process, Event, Manager, Lock, Queue
-from config import ServerConfig, ConfigReadExcetion
-from db_manager import MongoDB, DBManagerException
+from .config import ServerConfig, ConfigReadExcetion
+from .db_manager import MongoDB, DBManagerException
 from threading import Event as Event_Thr, Thread
-from file_io_stats import MDSDataObj, OSSDataObj
-from exceptions import ProvenanceExitExp
-from file_op_logs import FileOpObj
+from .file_io_stats import MDSDataObj, OSSDataObj
+from .exceptions import ProvenanceExitExp
+from collections import defaultdict
+from .file_op_logs import FileOpObj
 from bisect import bisect_left
 from tabulate import tabulate
 from typing import List, Dict
+from .logger import log, Mode
+import subprocess
 import time, os
 
 #------ Global Variable ------
@@ -42,24 +45,22 @@ class Aggregator(Process):
         try:
             self._interval = self.config.getAggrIntv()
             self._timerIntv = self.config.getAggrTimer()
+            self._mdtTargets = self.config.getMdtTargets()
+            self._chLogUsers = self.config.getChLogsUsers()
 
             self._jobScheduler = JobScheduler()
 
         except ConfigReadExcetion as confExp:
-            print(confExp.getMessage())
+            log(Mode.AGGREGATOR, confExp.getMessage())
             self.event_flag.set()
 
         except JobSchedulerException as jobSchedExp:
-            print(jobSchedExp.getMessage())
+            log(Mode.AGGREGATOR, jobSchedExp.getMessage())
             self.event_flag.set()
 
 
     # Implement Process.run()
     def run(self):
-        """
-        Override the Process run function
-        :return: None
-        """
         # Register the ProvenanceObj to the Aggregator Manager along with the Proxy class
         self._AggregatorManager.register('ProvenanceObj', ProvenanceObj, self._ProvenanceObjProxy)
         # Start the Base manager
@@ -134,8 +135,8 @@ class Aggregator(Process):
                 for procdb in procDBList:
                     procdb.join()
 
-                # if len(provFSTbl):
-                #     self._tableView(provFSTbl)
+                # Now cleanup the ChangeLogs since they're already dumped into the database
+                self._clearChangeLogs(provFSTbl.copy())
 
             # Terminate timer after flag is set
             timer_flag.set()
@@ -294,13 +295,40 @@ class Aggregator(Process):
                 mongodb.insert(MongoDB.Collections.FILE_OP_COLL, fopObj_lst)
 
         except DBManagerException as dbExp:
-            pass
+            log(Mode.AGGREGATOR, dbExp.getMessage())
 
         finally:
             # Close the MongoClient
-            print("====== MongoDB Done =========\n ")
             if mongodb:
                 mongodb.close()
+
+    #
+    # Clear the ChangeLogs
+    #
+    def _clearChangeLogs(self, provenData: Dict[str, 'ProvenanceObj']):
+        """
+        Clear the changeLog records which are already dumped into the database
+        that will help to keep the memory optimized
+
+        :param provenData: Dict of ProvenanceObj
+        :return: None
+        """
+        # Collect all the captured Changelog records along with their ids
+        chlRecs = defaultdict(list)
+        for provObj in provenData.values():
+            for fopObj in provObj.FileOpObj_lst:
+                chlRecs[fopObj.mdtTarget].append(fopObj.recID)
+        # Clearing ChangeLogs per MDT, USER from the
+        # beginning to the last record of current capture
+        for mdtTarget, recIdList in chlRecs.items():
+            if recIdList:
+                # find the corresponding Changelog User of the given MDT
+                user = self._chLogUsers[self._mdtTargets.index(mdtTarget)]
+                # Get the last record that should be deleted
+                endRec = max(recIdList)
+                # clear the Changelog
+                subprocess.check_output("lfs changelog_clear " + mdtTarget + " " + user + " " + str(endRec), shell=True)
+
 
 
     @staticmethod
@@ -379,10 +407,13 @@ class Aggregator(Process):
         pass
 
     #
-    # Define a Proxy Class to handle the ProvenanceObj object
-    # while it's being shared among multiple processes
+    # Internal Proxy Class
     #
     class _ProvenanceObjProxy(NamespaceProxy):
+        """
+        Define a Proxy Class to handle the ProvenanceObj object
+        while it's being shared among multiple processes
+        """
         # Specify which methods can be exposed to the outside
         _exposed_ = ('__getattribute__', '__setattr__', '__delattr__', 'insert_sorted', 'updateJobInfo')
 

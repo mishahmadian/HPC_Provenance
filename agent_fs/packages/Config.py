@@ -33,7 +33,7 @@ class AgentConfig:
     # Validate the agent.conf to ensure all the mandatorysections and options
     # are defined and correct
     def __validateConfig(self):
-        config = {'lustre' : ['mds_hosts', 'oss_hosts', 'fsnames', 'interval'],
+        config = {'lustre' : ['mds_hosts', 'oss_hosts', 'interval'],
                   'rabbitmq' : ['server', 'username', 'password'],
                   'producer' : ['exchange', 'queue', 'delay']}
         # Iterate over the Sections in config file
@@ -74,13 +74,6 @@ class AgentConfig:
             return True
         return False
 
-
-    # Get a list of Lustre fsname(s) defined in Config file
-    #   Return: List
-    def getFsnames(self):
-        if self.__loadConfigFile() or not hasattr(self, 'fsnames'):
-            self.fsnames = [fsname.strip() for fsname in self.__parser.get('lustre', 'fsnames').split(',')]
-        return self.fsnames
 
     # Get a list of MDS host names defined in Config file
     #   Return: List

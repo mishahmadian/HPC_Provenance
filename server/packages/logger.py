@@ -1,37 +1,35 @@
 # -*- coding: utf-8 -*-
 """
     This module will log the errors and will save them under the "log" directory
-    ** This module had to be modified to be functional with Python2
 
  Misha Ahmadian (misha.ahmadian@ttu.edu)
 """
+from collections import Counter
 from datetime import datetime
-import os.path as Path
+from enum import Enum, auto
+from pathlib import Path
 import fcntl
-import os
 
 # Global variables
-_base_log_name = 'Provenance_lustre_'
+_base_log_name = 'Provenance_sched_'
 _base_log_suffix = '.log'
-_max_log_file = 3   # Keep the logs for 6 months
--enabled = 0
+_max_log_file = 6   # Keep the logs for 6 months
 
+#
 # The main function to eb used for logging
 #
-def log(log_mode, log_message):
+def log(log_mode: 'Mode', log_message :str) -> None:
     """
     This function will be called by different classes to save their error states
     :return: None
     """
-    if not enabled:
-        return
     # Append the Logging mode to the message
     if log_mode not in [Mode.APP_START, Mode.APP_EXIT]:
-        log_message = "({}) {}".format(log_mode, log_message)
+        log_message = f"({log_mode.name}) {log_message}"
     # Get the current date/time of the log
     log_date = datetime.now().strftime("%m-%d-%Y, %H:%M:%S")
     # append the dat/time to message
-    log_message = "[{}] {}".format(log_date, log_message)
+    log_message = f"[{log_date}] {log_message}"
     #
     # Open the file in this way helps to apply flock to the file
     logFile = open(_get_log_file(), 'a')
@@ -43,10 +41,11 @@ def log(log_mode, log_message):
         fcntl.flock(logFile, fcntl.LOCK_UN)
         logFile.close()
 
+
 #
 # Find/Create the log file of this month
 #
-def _get_log_file():
+def _get_log_file() -> str:
     """
     This local function will find the correct log file for this month, if it exists
     returns the file, otherwise first will look insie the log directory, if the number
@@ -57,42 +56,46 @@ def _get_log_file():
              since we are going to apply flock on files to avoid race condition
     """
     # get the location of the log file directory: ../config
-    log_dir = Path.join(Path.dirname(Path.dirname(Path.abspath(__file__))), 'logs')
+    log_dir = Path(__file__).parent.parent.joinpath("logs")
     # Make the log directory if does not exist
-    if not Path.exists(log_dir):
-        os.mkdir(log_dir)
+    log_dir.mkdir(exist_ok=True)
     # The current Month and Year for this log
     current_M_Y = datetime.today().strftime("%m-%Y")
     # The log file that has to be used for this month
-    current_log = Path.join(log_dir, _base_log_name + current_M_Y + _base_log_suffix)
+    current_log = log_dir.joinpath(_base_log_name + current_M_Y + _base_log_suffix)
     # if the current_log does not exist, then rotate the log (if necessary)
     # and create the log file for this month
-    if not Path.exists(current_log):
-        # Get the list of log directory contents
-        log_dir_ls = os.listdir(log_dir)
+    if not current_log.exists():
         # Count the number of log files in this directory
         # we aim to keep not more than 10 log files in this directory
-        if len(log_dir_ls) >= _max_log_file:
-            log_dir_files = []
-            for logfile in log_dir_ls:
-                logfilePath = Path.join(log_dir, logfile)
-                log_dir_files.append((os.stat(logfilePath).st_mtime, logfilePath))
-
+        count_logs = Counter(logfile.suffix for logfile in log_dir.iterdir())
+        if count_logs[_base_log_suffix] >= _max_log_file:
             # find the oldest log file
-            _, old_log = min(logTuple for logTuple in log_dir_files)
+            _, old_log = min((logfile.stat().st_mtime, logfile) for logfile in log_dir.iterdir())
             # Delete the old log file
-            os.remove(old_log)
+            old_log.unlink()
 
+        # Create the log file
+        current_log.touch()
     # Return the log file
-    return current_log
+    return current_log.as_posix()
 
 #
 # The Supported modes for this logger
 #
-class Mode:
-    APP_START = 'APP_START'
-    APP_EXIT = 'APP_EXIT'
-    COMMUNICATION = 'COMMUNICATION'
-    CONFIG = 'CONFIG'
-    IO_COLLECTOR = 'IO_COLLECTOR'
-
+class Mode(Enum):
+    """
+        Defines what classes are being logged by this logger
+    """
+    APP_START = auto()
+    APP_EXIT = auto()
+    AGGREGATOR = auto()
+    COMMUNICATION = auto()
+    CONFIG = auto()
+    DB_MANAGER = auto()
+    FILE_IO_STATS = auto
+    FILE_OP_LOGS = auto()
+    MAIN = auto()
+    PERSISTENT = auto()
+    SCHEDULER = auto()
+    UGE_SERVICE = auto()

@@ -7,9 +7,8 @@
 
  Misha ahmadian (misha.ahmadian@ttu.edu)
 """
-from schedConfig import SchedConfig, ConfigReadExcetion
+from .schedConfig import SchedConfig, ConfigReadExcetion
 from file_read_backwards import FileReadBackwards
-from queue import Queue
 
 class UGEAccountingInfo:
     def __init__(self, config : SchedConfig):
@@ -20,7 +19,7 @@ class UGEAccountingInfo:
         acctList = []
         #The path to Accounting file should already be specified
         if not self.__accountingFilePath:
-            raise ConfigReadExcetion("'accounting_file' is not defined in 'sched.conf' file")
+            raise ConfigReadExcetion("'accounting_file' is not defined in 'sched.conf' file under [uge_acct] section")
 
         # Open the UGE Accounting file and start read it backward since latest job infos
         # could be found at the bottom of the file

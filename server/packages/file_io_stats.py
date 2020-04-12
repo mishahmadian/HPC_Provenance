@@ -9,12 +9,13 @@
 
  Misha ahmadian (misha.ahmadian@ttu.edu)
 """
-from communication import ServerConnection, CommunicationExp
-from config import ServerConfig, ConfigReadExcetion
+from .communication import ServerConnection, CommunicationExp
+from .config import ServerConfig, ConfigReadExcetion
 from multiprocessing import Process, Queue
-from exceptions import ProvenanceExitExp
-from persistant import FinishedJobs
+from .exceptions import ProvenanceExitExp
+from .persistant import FinishedJobs
 from typing import Dict, List
+from .logger import log, Mode
 import hashlib
 import ctypes
 import json
@@ -36,7 +37,7 @@ class IOStatsListener(Process):
             self.__OSS_hosts = self.config.getOSS_hosts()
 
         except ConfigReadExcetion as confExp:
-            print(confExp.getMessage())
+            log(Mode.FILE_IO_STATS, confExp.getMessage())
 
     # Implement Process.run()
     def run(self):
@@ -48,13 +49,13 @@ class IOStatsListener(Process):
             comm.Collect_io_stats(self.ioStats_receiver)
 
         except CommunicationExp as commExp:
-            print(commExp.getMessage())
+            log(Mode.FILE_IO_STATS, commExp.getMessage())
 
         except ProvenanceExitExp:
             pass
 
         except Exception as exp:
-            print(str(exp))
+            log(Mode.FILE_IO_STATS, str(exp))
 
     # This function will be triggered as soon as RabbitMQ receives data from
     # agents on jobStat queue

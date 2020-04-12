@@ -7,9 +7,10 @@
 
  Misha ahmadian (misha.ahmadian@ttu.edu)
 """
-from config import ServerConfig, ConfigReadExcetion
-from persistant import FinishedJobs
+from .config import ServerConfig, ConfigReadExcetion
+from .persistant import FinishedJobs
 from enum import Enum, unique
+from .logger import log, Mode
 import uge_service
 import hashlib
 
@@ -25,8 +26,12 @@ class JobScheduler:
         # Following section executes when [uge] section appears in server.conf
         #
         self.__ugeService = None
-        if self.config.getUGE_clusters():
-            self.__ugeService = uge_service.UGE()
+        try:
+            if self.config.getUGE_clusters():
+                self.__ugeService = uge_service.UGE()
+
+        except ConfigReadExcetion as confExp:
+            log(Mode.SCHEDULER, confExp.getMessage())
         # -------------------------------------------------------------------------------------
     #
     # The main method that gets the jobInfo object regardless of scheduler type and the type of job

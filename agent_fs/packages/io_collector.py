@@ -18,7 +18,7 @@
 from Config import AgentConfig, ConfigReadExcetion
 from Communication import Producer, CommunicationExp
 from threading import Thread, Event
-from ntplib import NTPClient
+from Logger import log, Mode
 from Queue import Queue
 import subprocess
 import signal
@@ -38,7 +38,8 @@ class CollectIOstats(Thread):
         self.hostname = socket.gethostname()
         # Set JobStat cleanup interval
         if self.hostname in self.config.getMDS_hosts():
-            self._setMaxAutoCleanup(self.config.getMaxJobstatAge())
+            if self._is_MGS():
+              self._setMaxAutoCleanup(self.config.getMaxJobstatAge())
 
     # Implement Thread.run()
     def run(self):
@@ -63,7 +64,7 @@ class CollectIOstats(Thread):
                 self.exit_flag.wait(waitInterval)
 
             except ConfigReadExcetion as confExp:
-                print(confExp.getMessage())
+                log(Mode.IO_COLLECTOR, confExp.getMessage())
                 self.exit_flag.set()
 
     # Load the Agent Settings from Agent.conf file
@@ -87,6 +88,12 @@ class CollectIOstats(Thread):
     def _getJobStats(self, serverParam, fsname):
         param = '.'.join([serverParam, fsname, 'job_stats'])
         return subprocess.check_output("lctl get_param " + param + " | tail -n +2", shell=True)
+
+    # Check and see if the server is MGS (Lustre Management Server)
+    def _is_MGS(self):
+        mgs = subprocess.check_output("lctl dl | grep -i mgs" , shell=True, encoding="UTF-8")
+        if mgs.strip(): return True
+        return False
 
     # Clear the accumulated JobStats from Luster logs
     def _clearJobStats(self, serverParam):
@@ -133,27 +140,12 @@ class PublishIOstats(Thread):
                     self.producer.send(message_json)
 
                 except CommunicationExp as commExp:
-                    print(commExp.getMessage())
+                    log(Mode.IO_COLLECTOR, commExp.getMessage())
                     self.exit_flag.set()
 
             #
             sendingInterval = self.producer.getInterval()
             self.exit_flag.wait(sendingInterval)
-
-    # ------INCOMPLETE--------
-    # The NTP option can be add in the future, but the machine time
-    # will be used for timestamp assuming that the machine is connected
-    # to a reliable NTP server
-    def __get_ntp_time(self):
-        ntp = NTPClient()
-        ntp_server = None #self.config.getNTPServer()
-        try:
-            response = ntp.request(ntp_server)
-            return response.tx_time
-        except NTPException as ntpExp:
-            print(str(ntpExp))
-            self.exit_flag.set()
-
 
 
 #
@@ -184,6 +176,8 @@ class IO_Collector:
     # Main Function
     def agent_run(self):
         try:
+            log(Mode.APP_EXIT, "***************** Provenance Lustre Agent Started *****************")
+
             jobstat_Q = Queue()
 
             # Jobstat Collection thread
@@ -203,30 +197,27 @@ class IO_Collector:
                     raise MonitoringExitExp
 
         except MonitoringExitExp:
-            print("\nProvenance FS agent is shutting down..."),
+            log(Mode.APP_EXIT, "***************** Provenance Lustre Agent Stopped *****************")
+            try:
+                if not self.IOStats_Thr is None:
+                    self.IOStats_Thr.exit_flag.set()
+                    self.IOStats_Thr.join()
+                if not self.pubJstat_Thr is None:
+                    self.pubJstat_Thr.exit_flag.set()
+                    self.pubJstat_Thr.join()
+
+            except Exception as exp:
+                log(Mode.IO_COLLECTOR, "[Error on Exit]" + str(exp))
 
         except ConfigReadExcetion as confExp:
-            print(confExp.getMessage())
+            log(Mode.IO_COLLECTOR, confExp.getMessage())
 
         except CommunicationExp as commExp:
-            print(commExp.getMessage())
+            log(Mode.IO_COLLECTOR, commExp.getMessage())
 
         except Exception as exp:
             print(str(exp))
 
-        finally:
-                try:
-                    if not self.IOStats_Thr is None:
-                        self.IOStats_Thr.exit_flag.set()
-                        self.IOStats_Thr.join()
-                    if not self.pubJstat_Thr is None:
-                        self.pubJstat_Thr.exit_flag.set()
-                        self.pubJstat_Thr.join()
-
-                    print("Done!")
-
-                except:
-                    pass
 
 #
 # Main

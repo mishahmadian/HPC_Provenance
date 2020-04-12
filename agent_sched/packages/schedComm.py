@@ -6,7 +6,7 @@
     Misha Ahmadian (misha.ahmadian@ttu.edu)
 """
 from pika import PlainCredentials, ConnectionParameters, BlockingConnection, BasicProperties, exceptions
-from schedConfig import SchedConfig, ConfigReadExcetion
+from .schedConfig import SchedConfig, ConfigReadExcetion
 from typing import Callable
 from enum import Enum
 

@@ -8,8 +8,8 @@
  Misha ahmadian (misha.ahmadian@ttu.edu)
 """
 from multiprocessing import Process, Queue, Event
-from communication import ServerConnection
-from config import ServerConfig
+from .communication import ServerConnection
+from .config import ServerConfig
 #from scheduler import UGEJobInfo
 import json, urllib.request
 from typing import List
@@ -214,21 +214,3 @@ class UGEServiceException(Exception):
 
     def getMessage(self):
         return self.message
-
-# if __name__ == "__main__":
-#     config = ServerConfig()
-#     cluster_inx = 0
-#     uge_ip = config.getUGE_Addr()[cluster_inx]
-#     uge_port = config.getUGE_Port()[cluster_inx]
-#     jobId = sys.argv[1]
-#     taskid = None
-#     if len(sys.argv) > 2:
-#         taskid = sys.argv[2]
-#     jobinfo = UGERest.getUGEJobInfo(uge_ip, uge_port, jobId, taskid)
-#
-#     if jobinfo:
-#         for itm in [atr for atr in dir(jobinfo) if (not atr.startswith('__'))
-#                                                   and (not callable(getattr(jobinfo, atr)))]:
-#             print(itm + " --> " + str(getattr(jobinfo, itm)))
-#     else:
-#         UGEAccounting.getUGEJobInfo('genius', jobid, taskid)

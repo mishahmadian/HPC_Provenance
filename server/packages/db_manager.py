@@ -5,10 +5,11 @@
         - MongoDB
         - InfluxDB
 """
-from config import ServerConfig, ConfigReadExcetion
+from .config import ServerConfig, ConfigReadExcetion
 from pymongo.errors import PyMongoError
 from typing import Union, Dict, List
 from pymongo import MongoClient
+from .logger import log, Mode
 from enum import Enum, unique
 
 class MongoDB:
@@ -31,10 +32,10 @@ class MongoDB:
             self._mongoDB = self._mongoClient[config.getMongoSrcDB()]
 
         except ConfigReadExcetion as confExp:
-            raise confExp
+            log(Mode.DB_MANAGER, confExp.getMessage())
 
         except PyMongoError as mongoExp:
-            raise DBManagerException(str(mongoExp))
+            log(Mode.DB_MANAGER, str(mongoExp))
 
     #
     # Main insert method for Mongo DB

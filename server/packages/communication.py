@@ -6,7 +6,8 @@
     Misha Ahmadian (misha.ahmadian@ttu.edu)
 """
 from pika import PlainCredentials, ConnectionParameters, BlockingConnection, BasicProperties,  exceptions
-from config import ServerConfig, ConfigReadExcetion
+from .config import ServerConfig, ConfigReadExcetion
+from .logger import log, Mode
 from uuid import uuid4
 from enum import Enum
 
@@ -22,7 +23,7 @@ class ServerConnection:
             self.__Vhost = self.__config.getVhost()
 
         except ConfigReadExcetion as confExp:
-            raise CommunicationExp(confExp.getMessage(), CommunicationExp.Type.AMQP_CONFIG)
+            log(Mode.COMMUNICATION, confExp.getMessage())
 
         # Create Credentials with username/password
         self.__credentials = PlainCredentials(self.__username, self.__password)
