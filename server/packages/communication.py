@@ -5,9 +5,11 @@
 
     Misha Ahmadian (misha.ahmadian@ttu.edu)
 """
+import sys, os.path as Path
+sys.path.append(Path.dirname(Path.abspath(__file__)))
 from pika import PlainCredentials, ConnectionParameters, BlockingConnection, BasicProperties,  exceptions
-from .config import ServerConfig, ConfigReadExcetion
-from .logger import log, Mode
+from config import ServerConfig, ConfigReadExcetion
+from logger import log, Mode
 from uuid import uuid4
 from enum import Enum
 

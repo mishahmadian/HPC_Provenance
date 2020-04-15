@@ -7,7 +7,7 @@
 
  Misha ahmadian (misha.ahmadian@ttu.edu)
 """
-from .schedConfig import SchedConfig, ConfigReadExcetion
+from schedConfig import SchedConfig, ConfigReadExcetion
 from file_read_backwards import FileReadBackwards
 
 class UGEAccountingInfo:

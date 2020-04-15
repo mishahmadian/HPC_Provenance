@@ -4,12 +4,13 @@
     Databases:
         - MongoDB
         - InfluxDB
+        - Neo4j
 """
-from .config import ServerConfig, ConfigReadExcetion
-from pymongo.errors import PyMongoError
+from pymongo import MongoClient, IndexModel, TEXT, ASCENDING
+from pymongo.errors import PyMongoError, DuplicateKeyError
+from config import ServerConfig, ConfigReadExcetion
 from typing import Union, Dict, List
-from pymongo import MongoClient
-from .logger import log, Mode
+from logger import log, Mode
 from enum import Enum, unique
 
 class MongoDB:
@@ -38,6 +39,33 @@ class MongoDB:
             log(Mode.DB_MANAGER, str(mongoExp))
 
     #
+    # Prepare Database when application starts running
+    #
+    def prepare(self) -> None:
+        """
+            This method should be called when the program gets started
+            to prepare the database by performing some actions such as:
+            - Create specific Indexes for collections
+        :return:
+        """
+        for collection in self.Collections:
+            # Get all available collections of this database
+            allcolls = self._mongoDB.collection_names()
+            # Create Index for JobInfo
+            if collection.value == "jobinfo":
+                # If JobInfo is not created yet
+                if not collection.value in allcolls:
+                    coll = self._mongoDB[collection.value]
+                    # Define the Index(es)
+                    uid_uniq_inx = IndexModel([("uid", TEXT), ("jobid", ASCENDING)],
+                                              name="jobinfo_uid_uniq_inx", unique=True)
+                    # Add/Create indexes
+                    coll.create_indexes([uid_uniq_inx])
+                    #
+                    log(Mode.DB_MANAGER, "The 'jobinfo' collection was created and Indexed")
+
+
+    #
     # Main insert method for Mongo DB
     #
     def insert(self, collection: 'MongoDB.Collections', data: Union[Dict, List]) -> None:
@@ -62,11 +90,16 @@ class MongoDB:
             # Insert data (document) into the collection
             # If data is Dict:
             if isinstance(data, Dict):
-                coll.insert_one(data)
+                if data:
+                    coll.insert_one(data)
 
             # Otherwise:
             if isinstance(data, List):
-                coll.insert_many(data)
+                if data:
+                    coll.insert_many(data)
+
+        except DuplicateKeyError as dupExp:
+            raise dupExp
 
         except PyMongoError as mongoExp:
             raise DBManagerException(f"(insert) {str(mongoExp)}", DBManagerException.DBType.MONGO_DB)
@@ -74,7 +107,7 @@ class MongoDB:
     #
     # Main Update Method for MongoDB
     #
-    def update(self, collection: 'MongoDB.Collections', doc_query: Dict, data: Dict) -> bool:
+    def update(self, collection: 'MongoDB.Collections', doc_query: Dict, data: Union[Dict, List]) -> bool:
         """
         Update a document selected by doc_query with new data
 
@@ -87,8 +120,8 @@ class MongoDB:
             raise DBManagerException("(update) The type of 'Collection' is wrong"
                                      , DBManagerException.DBType.MONGO_DB)
 
-        if not isinstance(data, Dict):
-            raise DBManagerException("(update) The type of 'data' must be 'Dict'"
+        if not (isinstance(data, Dict) or isinstance(data, List)):
+            raise DBManagerException("(update) The type of 'data' must be 'Dict | List'"
                                      , DBManagerException.DBType.MONGO_DB)
 
         if not isinstance(doc_query, Dict):
@@ -100,13 +133,50 @@ class MongoDB:
             coll = self._mongoDB[collection.value]
             # Set the new data values
             newData = {"$set" : data}
-            # update the database
-            result = coll.update_one(doc_query, newData, upsert=True)
-            # Return the update success
-            return result.modified_count > 0
+            # update the database if both query and data are defined
+            if doc_query and data:
+                result = coll.update_one(doc_query, newData, upsert=True)
+                # Return the update success
+                return result.modified_count > 0
+            else:
+                return False
+
+        except DuplicateKeyError as dupExp:
+            raise dupExp
 
         except PyMongoError as mongoExp:
             raise DBManagerException(f"(update) {str(mongoExp)}", DBManagerException.DBType.MONGO_DB)
+
+    #
+    # Query method for MongoDB that returns the first found document
+    #
+    def find_one(self, collection: 'MongoDB.Collections', query: Dict):
+        """
+        Find the first queried documents based on "query" criteria
+        Returns none or one document
+        :param collection: MongoDB.Collections
+        :param query: Dict
+        :return: Dict
+        """
+        if not isinstance(collection, self.Collections):
+            raise DBManagerException("(query) The type of 'Collection' is wrong"
+                                     , DBManagerException.DBType.MONGO_DB)
+
+        if not isinstance(query, Dict):
+            raise DBManagerException("(query) The type of 'query' must be 'Dict'"
+                                     , DBManagerException.DBType.MONGO_DB)
+
+        # the query should be defined and not empty
+        if not query:
+            return None
+
+        # Selects the collection of this database
+        coll = self._mongoDB[collection.value]
+        # Find the query data in database
+        docs = coll.find_one(query)
+        # Return the found documents
+        return docs
+
 
     #
     # Close The MongoDB connection
@@ -123,7 +193,13 @@ class MongoDB:
             raise DBManagerException(f"(close) {str(mongoExp)}", DBManagerException.DBType.MONGO_DB)
 
     def test(self):
-        print("collections: " + str(self._mongoDB.list_collection_names()))
+        #print("collections: " + str(self._mongoDB.list_collection_names()))
+        colls = self._mongoDB.collection_names()
+        if not "jobinfo2" in colls:
+            print("Creating Index")
+            coll = self._mongoDB['jobinfo2']
+            uid_index = IndexModel([("uid", HASHED)], name="uid_uniq_inx", unique=True)
+            coll.create_indexes([uid_index])
 
     #
     # MongoDB Collection Enum

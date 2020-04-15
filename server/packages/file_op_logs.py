@@ -11,10 +11,10 @@
  Misha ahmadian (misha.ahmadian@ttu.edu)
 """
 from multiprocessing import Process, Event, Queue, Pool, cpu_count
-from .config import ServerConfig, ConfigReadExcetion
-from .exceptions import ProvenanceExitExp
+from config import ServerConfig, ConfigReadExcetion
+from exceptions import ProvenanceExitExp
 from datetime import datetime
-from .logger import log, Mode
+from logger import log, Mode
 from typing import List
 from math import ceil
 import subprocess

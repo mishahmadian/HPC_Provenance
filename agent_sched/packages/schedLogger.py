@@ -24,7 +24,7 @@ def log(log_mode: 'Mode', log_message :str) -> None:
     :return: None
     """
     # Append the Logging mode to the message
-    if log_mode not in [Mode.APP_ASTART, Mode.APP_EXIT]:
+    if log_mode not in [Mode.APP_START, Mode.APP_EXIT]:
         log_message = f"({log_mode.name}) {log_message}"
     # Get the current date/time of the log
     log_date = datetime.now().strftime("%m-%d-%Y, %H:%M:%S")

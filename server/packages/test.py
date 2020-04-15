@@ -655,7 +655,52 @@ from enum import Enum
 # response = serverCon.rpc_call("genius_rpc_queue", request)
 # print("response -> " + response)
 
-import logger
+#import logger
 
 #logger.log(logger.Mode.APP_ASTART, "************ App Started ***********")
-logger.log(logger.Mode.AGGREGATOR, "[Error]_ Something bad happened")
+#logger.log(logger.Mode.AGGREGATOR, "[Error]_ Something bad happened")
+
+from db_manager import MongoDB
+# mongodb = MongoDB()
+# query = {"uid" : "ffb1208ee27fe68a27a7bf4d4494f7a8"}
+# docs = mongodb.find_one(MongoDB.Collections.MDS_STATS_COLL, query)
+# print(str(docs))
+
+from db_manager import MongoDB
+mydata = {
+    "uid" : "68b8826c56367b766a01e3b4eddc99dc",
+    "cluster" : "genius",
+    "command" : None,
+    "cpu" : None,
+    "end_time" : None,
+    "exec_host" : None,
+    "failed_no" : None,
+    "h_rt" : None,
+    "h_vmem" : None,
+    "io" : None,
+    "ioops" : None,
+    "iow" : None,
+    "jobName" : None,
+    "jobid" : "702",
+    "maxvmem" : None,
+    "mem" : None,
+    "num_cpu" : None,
+    "parallelEnv" : None,
+    "project" : None,
+    "pwd" : None,
+    "q_del" : [
+
+    ],
+    "queue" : None,
+    "s_rt" : None,
+    "sched_type" : "uge",
+    "start_time" : None,
+    "status" : "UNDEF",
+    "submit_time" : None,
+    "taskid" : None,
+    "username" : None,
+    "wallclock" : None
+}
+mongodb = MongoDB()
+mongodb.prepare()
+#mongodb.insert(MongoDB.Collections.JOB_INFO_COLL, mydata)

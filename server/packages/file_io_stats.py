@@ -9,13 +9,13 @@
 
  Misha ahmadian (misha.ahmadian@ttu.edu)
 """
-from .communication import ServerConnection, CommunicationExp
-from .config import ServerConfig, ConfigReadExcetion
+from communication import ServerConnection, CommunicationExp
+from config import ServerConfig, ConfigReadExcetion
 from multiprocessing import Process, Queue
-from .exceptions import ProvenanceExitExp
-from .persistant import FinishedJobs
+from exceptions import ProvenanceExitExp
+from persistant import FinishedJobs
 from typing import Dict, List
-from .logger import log, Mode
+from logger import log, Mode
 import hashlib
 import ctypes
 import json
@@ -64,6 +64,7 @@ class IOStatsListener(Process):
         ossStatObjLst : List[OSSDataObj] = []
         # Get the list of those jobs which are already finished
         finished_jobIds = self.finishedJobs.getAll()
+        print(f"++++++++++ finished_jobIds = {finished_jobIds}")
 
         io_stat_map = json.loads(body.decode("utf-8"))
         # Check whether the IO stat data comes from MDS or OSS.
@@ -82,7 +83,7 @@ class IOStatsListener(Process):
                                     +" with MDS/OSS hosts in 'server.conf'")
 
         # Manage Finished Job IDs
-        self.__refine_finishedJobs(mdsStatObjLst, ossStatObjLst, finished_jobIds)
+        ###self.__refine_finishedJobs(mdsStatObjLst, ossStatObjLst, finished_jobIds)
         # Put mdsStatObjLst into the MSDStat_Q
         if mdsStatObjLst:
             self.MSDStat_Q.put(mdsStatObjLst)
@@ -119,6 +120,8 @@ class IOStatsListener(Process):
         for fJobId in finished_jobIds:
             if fJobId not in jstat_curr_ids:
                 invalid_fin_ids.append(fJobId)
+
+        print(f"++++++++++ Invalid List = {invalid_fin_ids}")
 
         # Now refine the list of Finished JobIds by removing the unnecessary Ids
         self.finishedJobs.correct_list(invalid_fin_ids)
@@ -157,6 +160,7 @@ class IOStatsListener(Process):
                     # If jobid[.taskid] appears among the list of finished jobs,
                     # then ignore the Jobstats data of this job
                     if jobid in finished_jobIds:
+                        print(f"   ++++++ MDS Stop [{jobid}]")
                         break
                     # Create new MDSDataObj
                     mdsObj = MDSDataObj()
@@ -173,7 +177,8 @@ class IOStatsListener(Process):
 
                 # Snapshot from Lustre reports
                 elif "snapshot_time" in attr:
-                    mdsObj.snapshot_time = line.split(':')[1].strip()
+                    snapshot = line.split(':')[1].strip()
+                    mdsObj.snapshot_time = int(snapshot) if snapshot.isnumeric() else snapshot
                 # Pars the attributes that are available in MDSDataObj
                 else:
                     # skip the unwanted attributes
@@ -181,6 +186,7 @@ class IOStatsListener(Process):
                         continue
                     # Set the corresponding attribute in the MDSDataObj object
                     value = line.split(':')[2].split(',')[0].strip()
+                    if value.isnumeric(): value = int(value)
                     setattr(mdsObj, attr, value)
 
             if mdsObj:
@@ -230,6 +236,7 @@ class IOStatsListener(Process):
                     # If jobid[.taskid] appears among the list of finished jobs,
                     # then ignore the Jobstats data of this job
                     if jobid in finished_jobIds:
+                        print(f"   ++++++ OSS Stop [{jobid}]")
                         break
                     # Create new OSSDataObj
                     ossObj = OSSDataObj()
@@ -246,7 +253,8 @@ class IOStatsListener(Process):
 
                 # Snapshot from Lustre reports
                 elif "snapshot_time" in attr:
-                    ossObj.snapshot_time = line.split(':')[1].strip()
+                    snapshot = line.split(':')[1].strip()
+                    ossObj.snapshot_time = int(snapshot) if snapshot.isnumeric() else snapshot
                 # Parse read_bytes and write_bytes in a different way
                 elif "_bytes" in attr:
                     # a set of related parameters for Read and Write operations
@@ -259,6 +267,7 @@ class IOStatsListener(Process):
                         delim2 = ',' if  inx != 6 else '}' # Splitting the JobStat output is weird!
                         # Set the corresponding attribute in the OSSDataObj object
                         value = line.split(':')[inx].split(delim2)[0].strip()
+                        if value.isnumeric(): value = int(value)
                         setattr(ossObj, objattr, value)
                 # Pars the attributes that are available in OSSDataObj
                 else:
@@ -267,6 +276,7 @@ class IOStatsListener(Process):
                         continue
                     # Set the corresponding attribute in the OSSDataObj object
                     value = line.split(':')[2].split(',')[0].strip()
+                    if value.isnumeric(): value = int(value)
                     setattr(ossObj, attr, value)
 
             if ossObj:
@@ -366,6 +376,7 @@ class OSSDataObj(object):
         self.getattr = 0
         self.setattr = 0
         self.punch = 0
+        self.sync = 0
         self.destroy = 0
         self.create = 0
 

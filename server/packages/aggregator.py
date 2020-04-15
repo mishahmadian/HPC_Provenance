@@ -7,19 +7,19 @@
  Misha ahmadian (misha.ahmadian@ttu.edu)
 """
 from multiprocessing.managers import BaseManager, NamespaceProxy, DictProxy
-from .scheduler import JobScheduler, JobInfo, JobSchedulerException
+from scheduler import JobScheduler, JobInfo, JobSchedulerException
 from multiprocessing import Process, Event, Manager, Lock, Queue
-from .config import ServerConfig, ConfigReadExcetion
-from .db_manager import MongoDB, DBManagerException
+from config import ServerConfig, ConfigReadExcetion
 from threading import Event as Event_Thr, Thread
-from .file_io_stats import MDSDataObj, OSSDataObj
-from .exceptions import ProvenanceExitExp
+from file_io_stats import MDSDataObj, OSSDataObj
+from exceptions import ProvenanceExitExp
 from collections import defaultdict
-from .file_op_logs import FileOpObj
+from db_operations import MongoOPs
+from file_op_logs import FileOpObj
 from bisect import bisect_left
 from tabulate import tabulate
 from typing import List, Dict
-from .logger import log, Mode
+from logger import log, Mode
 import subprocess
 import time, os
 
@@ -79,6 +79,8 @@ class Aggregator(Process):
             provFSTbl = Manager().dict()
 
             while not self.event_flag.is_set():
+                # Clear the Provenance Table after each round (Keep the Memory usage Optimized)
+                provFSTbl.clear()
                 # Record the current timestamp
                 self.currentTime = time.time()
                 # a list of Processes
@@ -104,7 +106,8 @@ class Aggregator(Process):
                                                                             self.jobInfo_Q,)))
                 # Aggregate Job Info(s) from Job Scheduler(s)
                 procList.append(Process(target=self._aggregateJobs, args=(self._jobScheduler, provFSTbl,
-                                                                          self.jobInfo_Q,)))
+                                                                          self.jobInfo_Q, provenanceObjManager,
+                                                                            aggregatorLock,)))
 
                 # Start all the aggregator processes:
                 for proc in procList:
@@ -124,7 +127,7 @@ class Aggregator(Process):
                 # Now dump the data into MonoDB
                 procDBList: List[Process] = [
                     # Create a separate process for MongoDB
-                    Process(target=self._dump2MongoDB, args=(provFSTbl.copy(),))
+                    Process(target=MongoOPs.dump2MongoDB, args=(provFSTbl.copy(),))
                 ]
 
                 # Start all DB Process
@@ -213,13 +216,16 @@ class Aggregator(Process):
     #
     # Aggregate Job Info objects
     #
-    def _aggregateJobs(self, jobScheduler: JobScheduler, provFSTbl: 'DictProxy', jobInfo_Q : Queue):
+    def _aggregateJobs(self, jobScheduler: JobScheduler, provFSTbl: 'DictProxy', jobInfo_Q : Queue,
+                       provObjMngr : '_AggregatorManager', aggregatorLock):
         """
         Aggregate the Job Info objects that come from Job Scheduler(s)
 
         :param jobScheduler: JobScheduler Object
         :param provFSTbl: Multi-processing Manager Dict
         :param jobInfo_Q: multi-processing queue of submitted jobs
+        :param provObjMngr: Proxy Object of ProvenanceObj
+        :param aggregatorLock: Process semaphor lock
         :return: None
         """
         # Fill the provFSTbl dictionary up until the interval time is up
@@ -238,69 +244,24 @@ class Aggregator(Process):
                 jobInfo : JobInfo = jobScheduler.getJobInfo(cluster, sched, jobid, taskid)
                 # Get the  JobInfo Unique ID
                 uniq_id = jobInfo.uniqID()
-                if provFSTbl._callmethod('__getitem__', (uniq_id,)).jobInfo.status \
-                        is not JobInfo.Status.FINISHED:
-                    # Update the corresponding object in Provenance Table with this JobInfo object
-                    provFSTbl._callmethod('__getitem__', (uniq_id,)).updateJobInfo(jobInfo)
+                print(f"---------- JobInfo: req:[{job_req}]  {jobInfo.jobid}  {jobInfo.status} -------")
+                # try:
+                #     if provFSTbl._callmethod('__getitem__', (uniq_id,)).jobInfo.status \
+                #             is not JobInfo.Status.FINISHED:
+                #         # Update the corresponding object in Provenance Table with this JobInfo object
+                #         provFSTbl._callmethod('__getitem__', (uniq_id,)).updateJobInfo(jobInfo)
+                # except KeyError:
+                #     print(f"------ keyError {uniq_id} ------ ")
+                #     jobInfo_Q.put(job_req)
+                if not provFSTbl.get(uniq_id):
+                    with aggregatorLock:
+                        provFSTbl[uniq_id] = provObjMngr.ProvenanceObj()
+
+                provFSTbl._callmethod('__getitem__', (uniq_id,)).updateJobInfo(jobInfo)
+
+
 
             self.timesUp.wait(1)
-
-    #
-    # Dump to MongoDB database
-    #
-    def _dump2MongoDB(self, provenData: Dict[str, 'ProvenanceObj']):
-        """
-        Store the aggregated Provenance Data into MongoDB
-            * Should be running as a separate process
-
-        :param provenData: Dict of ProvenanceObj
-        :return: None
-        """
-        # define mongodb
-        mongodb = None
-        try:
-            mongodb = MongoDB()
-            # Update the Provenance Objects in MongoDb. If they do not exist,
-            # then they will be inserted into db as a new document
-            for uid, provenObj in provenData.items():
-                # Update/Insert JobInfo
-                jobinfo = provenObj.jobInfo
-                update_query = {'uid' : uid} # Insert/Update one job per document
-                mongodb.update(MongoDB.Collections.JOB_INFO_COLL,
-                               update_query,
-                               jobinfo.to_dict())
-                # Update/Insert last collected MDS data
-                mdsObj = provenObj.MDSDataObj_lst[-1] if provenObj.MDSDataObj_lst else None
-                if mdsObj:
-                    # Insert/Update per each job running on each MDT of each MDS
-                    update_query = {'uid': uid, 'mds_host': mdsObj.mds_host, 'mdt_target': mdsObj.mdt_target}
-                    mongodb.update(MongoDB.Collections.MDS_STATS_COLL,
-                                   update_query,
-                                   mdsObj.to_dict())
-                # Update/Insert last collected OSS data
-                ossObj = provenObj.OSSDataObj_lst[-1] if provenObj.OSSDataObj_lst else None
-                if ossObj:
-                    # Insert/Update per each job running on each OST of each OSS
-                    update_query = {'uid': uid, 'mds_host': ossObj.oss_host, 'mdt_target': ossObj.ost_target}
-                    mongodb.update(MongoDB.Collections.OSS_STATS_COLL,
-                                   update_query,
-                                   ossObj.to_dict())
-                # Insert collected File Operations data (No update)
-                fopObj = provenObj.FileOpObj_lst
-                fopObj_lst = []
-                # Collect all file operations and insert all at once
-                for fopData in fopObj:
-                    fopObj_lst.append(fopData.to_dict())
-                # Insert all the fop object in one operation
-                mongodb.insert(MongoDB.Collections.FILE_OP_COLL, fopObj_lst)
-
-        except DBManagerException as dbExp:
-            log(Mode.AGGREGATOR, dbExp.getMessage())
-
-        finally:
-            # Close the MongoClient
-            if mongodb:
-                mongodb.close()
 
     #
     # Clear the ChangeLogs
@@ -451,6 +412,7 @@ class ProvenanceObj(object):
     # update the jobInfo object
     def updateJobInfo(self, jobInfo):
         self.jobInfo = jobInfo
+        self.jobInfo.jobid = int(jobInfo.jobid)
 
     # This function receives any type of MDSDataObj, OSSDataObj, or FileOpObj
     # objects and uses the timestamp attribute as the key to sort them while

@@ -7,10 +7,10 @@
 
  Misha ahmadian (misha.ahmadian@ttu.edu)
 """
-from .config import ServerConfig, ConfigReadExcetion
-from .persistant import FinishedJobs
+from config import ServerConfig, ConfigReadExcetion
+from persistant import FinishedJobs
 from enum import Enum, unique
-from .logger import log, Mode
+from logger import log, Mode
 import uge_service
 import hashlib
 

@@ -10,14 +10,15 @@
 
  Misha Ahmadian (misha.ahmadian@ttu.edu)
 """
-from .file_io_stats import IOStatsListener, IOStatsException
-from .aggregator import Aggregator, AggregatorException
-from .file_op_logs import ChangeLogCollector
-from .communication import CommunicationExp
-from .config import ConfigReadExcetion
-from .exceptions import ProvenanceExitExp
+from file_io_stats import IOStatsListener, IOStatsException
+from aggregator import Aggregator, AggregatorException
+from db_manager import MongoDB, DBManagerException
+from file_op_logs import ChangeLogCollector
+from communication import CommunicationExp
+from exceptions import ProvenanceExitExp
+from config import ConfigReadExcetion
 from multiprocessing import Queue
-from .logger import log, Mode
+from logger import log, Mode
 from time import sleep
 import signal
 
@@ -47,6 +48,11 @@ class Main_Interface:
     def run_server(self):
         try:
             log(Mode.APP_START, "***************** Provenance Server Started *****************")
+            #
+            # Prepare Databases
+            mongoDB = MongoDB()
+            mongoDB.prepare()
+            mongoDB.close()
             # IO Stats Listener Process
             self.IOStatsLsn_Proc = IOStatsListener(self.MSDStat_Q, self.OSSStat_Q)
             #self.IOStatsLsn_Proc.daemon = True
@@ -103,8 +109,11 @@ class Main_Interface:
         except AggregatorException as aggrExp:
             log(Mode.MAIN, aggrExp.getMessage())
 
+        except DBManagerException as dbExp:
+            log(Mode.MAIN, dbExp.getMessage())
+
         except Exception as exp:
-            print(str(exp))
+            log(Mode.MAIN, str(exp))
 
 #
 # Main

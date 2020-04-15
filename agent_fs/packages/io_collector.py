@@ -91,8 +91,8 @@ class CollectIOstats(Thread):
 
     # Check and see if the server is MGS (Lustre Management Server)
     def _is_MGS(self):
-        mgs = subprocess.check_output("lctl dl | grep -i mgs" , shell=True, encoding="UTF-8")
-        if mgs.strip(): return True
+        mgs = subprocess.check_output("lctl dl | grep -i mgs" , shell=True)
+        if mgs.decode("utf-8").strip(): return True
         return False
 
     # Clear the accumulated JobStats from Luster logs
@@ -176,7 +176,7 @@ class IO_Collector:
     # Main Function
     def agent_run(self):
         try:
-            log(Mode.APP_EXIT, "***************** Provenance Lustre Agent Started *****************")
+            log(Mode.APP_START, "***************** Provenance Lustre Agent Started *****************")
 
             jobstat_Q = Queue()
 
@@ -216,7 +216,7 @@ class IO_Collector:
             log(Mode.IO_COLLECTOR, commExp.getMessage())
 
         except Exception as exp:
-            print(str(exp))
+            log(Mode.IO_COLLECTOR, str(exp))
 
 
 #

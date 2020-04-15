@@ -7,6 +7,7 @@
 """
 from datetime import datetime
 import os.path as Path
+import socket
 import fcntl
 import os
 
@@ -14,7 +15,7 @@ import os
 _base_log_name = 'Provenance_lustre_'
 _base_log_suffix = '.log'
 _max_log_file = 3   # Keep the logs for 6 months
--enabled = 0
+_enabled = 1
 
 # The main function to eb used for logging
 #
@@ -23,11 +24,16 @@ def log(log_mode, log_message):
     This function will be called by different classes to save their error states
     :return: None
     """
-    if not enabled:
+    # This line if for test cases
+    if not _enabled:
+        print("[{}] {}".format(log_mode, log_message))
         return
     # Append the Logging mode to the message
     if log_mode not in [Mode.APP_START, Mode.APP_EXIT]:
         log_message = "({}) {}".format(log_mode, log_message)
+    else:
+        hostname = socket.gethostname()
+        log_message = "(host: {}) {}".format(hostname, log_message)
     # Get the current date/time of the log
     log_date = datetime.now().strftime("%m-%d-%Y, %H:%M:%S")
     # append the dat/time to message

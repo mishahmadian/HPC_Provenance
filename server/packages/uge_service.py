@@ -8,8 +8,8 @@
  Misha ahmadian (misha.ahmadian@ttu.edu)
 """
 from multiprocessing import Process, Queue, Event
-from .communication import ServerConnection
-from .config import ServerConfig
+from communication import ServerConnection
+from config import ServerConfig
 #from scheduler import UGEJobInfo
 import json, urllib.request
 from typing import List

@@ -44,11 +44,15 @@ def start_daemon():
         print ("The agent_service is already running... pid=[%s]" % pid)
         sys.exit(2)
 
+    # Ignore all the errors in stderr
+    stderr = open(os.devnull, 'w')
+
     # Create Daemon Context if it does not exist
     context = DaemonContext(
             working_directory = os.path.dirname(os.path.realpath(__file__)),
             umask = 0o002,
-            pidfile = pidfile.PIDLockFile(pid_file)
+            pidfile = pidfile.PIDLockFile(pid_file),
+            stderr=stderr
         )
 
     # Map the external signals to this Daemon which will eventually

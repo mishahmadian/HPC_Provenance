@@ -5,10 +5,10 @@
 
  Misha ahmadian (misha.ahmadian@ttu.edu)
 """
-from .schedConfig import SchedConfig, ConfigReadExcetion
-from .schedComm import SchedConnection, CommunicationExp
-from .ugeSchedService import UGEAccountingInfo
-from .schedLogger import log, Mode
+from schedConfig import SchedConfig, ConfigReadExcetion
+from schedComm import SchedConnection, CommunicationExp
+from ugeSchedService import UGEAccountingInfo
+from schedLogger import log, Mode
 import signal
 import json
 
@@ -51,7 +51,7 @@ class SchedMain:
             log(Mode.MAIN_SCHED, commExp.getMessage())
 
         except Exception as exp:
-            print(str(exp))
+            log(Mode.MAIN_SCHED, str(exp))
 
 
     #
