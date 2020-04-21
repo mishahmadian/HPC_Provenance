@@ -76,36 +76,33 @@ class Aggregator(Process):
             #==timer.start()
 
             # Create a shard Dictionary object which allows three process to update their values
-            provFSTbl = Manager().dict()
+            # This object will be created once only when aggregator process starts running
+            provenanceTbl = Manager().dict()
 
             while not self.event_flag.is_set():
-                # Clear the Provenance Table after each round (Keep the Memory usage Optimized)
-                provFSTbl.clear()
                 # Record the current timestamp
                 self.currentTime = time.time()
                 # a list of Processes
                 procList: List[Process] = []
-                # Create a shard Dictionary object which allows three process to update their values
-                #===provFSTbl = Manager().dict()
                 # Manage critical sections
                 aggregatorLock = Lock()
                 # reset the Times Up signal for all process
                 self.timesUp.clear()
                 #---------------------- AGGREGATE DATA -------------------------------
                 # Aggregate MDS IO Stats into the Provenance Table
-                procList.append(Process(target=self._aggregateFIO, args=(provFSTbl, provenanceObjManager,
+                procList.append(Process(target=self._aggregateFIO, args=(provenanceTbl, provenanceObjManager,
                                                                             aggregatorLock, self.MSDStat_Q,
                                                                             self.jobInfo_Q,)))
                 # Aggregate OSS IO Stats into the Provenance Table
-                procList.append(Process(target=self._aggregateFIO, args=(provFSTbl, provenanceObjManager,
+                procList.append(Process(target=self._aggregateFIO, args=(provenanceTbl, provenanceObjManager,
                                                                             aggregatorLock, self.OSSStat_Q,
                                                                             self.jobInfo_Q,)))
                 # Aggregate File Operations into the Provenance Table
-                procList.append(Process(target=self._aggregateFIO, args=(provFSTbl, provenanceObjManager,
+                procList.append(Process(target=self._aggregateFIO, args=(provenanceTbl, provenanceObjManager,
                                                                             aggregatorLock, self.fileOP_Q,
                                                                             self.jobInfo_Q,)))
                 # Aggregate Job Info(s) from Job Scheduler(s)
-                procList.append(Process(target=self._aggregateJobs, args=(self._jobScheduler, provFSTbl,
+                procList.append(Process(target=self._aggregateJobs, args=(self._jobScheduler, provenanceTbl,
                                                                           self.jobInfo_Q, provenanceObjManager,
                                                                             aggregatorLock,)))
 
@@ -127,7 +124,7 @@ class Aggregator(Process):
                 # Now dump the data into MonoDB
                 procDBList: List[Process] = [
                     # Create a separate process for MongoDB
-                    Process(target=MongoOPs.dump2MongoDB, args=(provFSTbl.copy(),))
+                    Process(target=MongoOPs.dump2MongoDB, args=(provenanceTbl.copy(),))
                 ]
 
                 # Start all DB Process
@@ -138,8 +135,12 @@ class Aggregator(Process):
                 for procdb in procDBList:
                     procdb.join()
 
-                # Now cleanup the ChangeLogs since they're already dumped into the database
-                self._clearChangeLogs(provFSTbl.copy())
+                # -------------------- CLEAR EXCESSIVE DATA FROM MEMORY ------------------------
+                # cleanup the ChangeLogs since they're already dumped into the database
+                self._clearChangeLogs(provenanceTbl.copy())
+
+                # Clear the Provenance Table to keep the memory usage optimized
+                self._clearProvenTbl(provenanceTbl)
 
             # Terminate timer after flag is set
             timer_flag.set()
@@ -154,12 +155,12 @@ class Aggregator(Process):
     #
     # Aggregate File OPs and IO stats
     #
-    def _aggregateFIO(self, provFSTbl: 'DictProxy', provObjMngr : '_AggregatorManager',
+    def _aggregateFIO(self, provenanceTbl: 'DictProxy', provObjMngr : '_AggregatorManager',
                          aggregatorLock, allFS_Q: Queue, jobInfo_Q : Queue):
         """
         Aggregate and map all the MDS/OSS/Changelog IO  data to a set of unique objects based on Job ID
 
-        :param provFSTbl: Multi-processing Manager Dict
+        :param provenanceTbl: Multi-processing Manager Dict
         :param provObjMngr: Proxy Object of ProvenanceObj
         :param aggregatorLock: Process semaphor lock
         :param allFS_Q: Any multi-processing queue contains the MDS/OSS/Changelog
@@ -167,11 +168,10 @@ class Aggregator(Process):
         :return: None - Store data into a dictionoray of ProvenanceObjs
         """
         try:
-            # Fill the provFSTbl dictionary up until the interval time is up
+            # Fill the provenanceTbl dictionary up until the interval time is up
             while not self.timesUp.is_set():
                 # all the MSDStat_Q, OSSStat_Q, and fileOP_Q are assumed as allFS_Q
                 if not allFS_Q.empty():
-                    #print(provFSTbl)
                     # Get the list of objects from each queue one by one
                     obj_List = allFS_Q.get()
                     # extract objects from obj_List which can be either MDSDataObj, OSSDataObj, or FileOpObj type
@@ -179,15 +179,14 @@ class Aggregator(Process):
                         # the uniqID function for each object in the queue should be the same for the same
                         # jobID, Cluster, and SchedType, not mather what type of object are they
                         uniq_id = obj_Q.uniqID()
-                        #print(uniq_id)
                         # Ignore None hash IDs (i.e. Procs)
                         if uniq_id is None:
                             continue
                         # if no data has been collected for this JonID_Cluster_SchedType,
                         #  then create a ProvenanceObj and fill it
                         with aggregatorLock:
-                            if not provFSTbl.get(uniq_id):
-                                provFSTbl[uniq_id] = provObjMngr.ProvenanceObj()
+                            if not provenanceTbl.get(uniq_id):
+                                provenanceTbl[uniq_id] = provObjMngr.ProvenanceObj()
                                 # create an empty JobInfo object
                                 jobInfo = JobInfo()
                                 jobInfo.cluster = obj_Q.cluster
@@ -195,19 +194,19 @@ class Aggregator(Process):
                                 jobInfo.jobid = obj_Q.jobid
                                 jobInfo.taskid = (obj_Q.taskid if obj_Q.taskid else None)
                                 jobInfo.status = JobInfo.Status.NONE
-                                provFSTbl._callmethod('__getitem__', (uniq_id,)).updateJobInfo(jobInfo)
+                                provenanceTbl._callmethod('__getitem__', (uniq_id,)).updateJobInfo(jobInfo)
 
-                        # Add a request in jobInfo_Q to get information from corresponding job scheduler
-                        job_info = '_'.join([obj_Q.cluster, obj_Q.sched_type, obj_Q.jobid +
-                                             ("." + obj_Q.taskid if obj_Q.taskid else "")])
-                        jobInfo_Q.put(job_info)
+                                # Add a request in jobInfo_Q to get information from corresponding job scheduler
+                                job_info = '_'.join([obj_Q.cluster, obj_Q.sched_type, obj_Q.jobid +
+                                                     ("." + obj_Q.taskid if obj_Q.taskid else "")])
+                                jobInfo_Q.put(job_info)
 
                         # Insert the corresponding object into its relevant list (sorted by timestamp)
                         # the _callmethod of Proxy class will take care of the complex object shared between processes
-                        provFSTbl._callmethod('__getitem__', (uniq_id,)).insert_sorted(obj_Q)
+                        provenanceTbl._callmethod('__getitem__', (uniq_id,)).insert_sorted(obj_Q)
 
                 # Wait if Queue is empty and check the Queue again
-                #print(provFSTbl)
+                #print(provenanceTbl)
                 self.timesUp.wait(1)
 
         except ProvenanceExitExp:
@@ -216,24 +215,33 @@ class Aggregator(Process):
     #
     # Aggregate Job Info objects
     #
-    def _aggregateJobs(self, jobScheduler: JobScheduler, provFSTbl: 'DictProxy', jobInfo_Q : Queue,
+    def _aggregateJobs(self, jobScheduler: JobScheduler, provenanceTbl: 'DictProxy', jobInfo_Q : Queue,
                        provObjMngr : '_AggregatorManager', aggregatorLock):
         """
         Aggregate the Job Info objects that come from Job Scheduler(s)
 
         :param jobScheduler: JobScheduler Object
-        :param provFSTbl: Multi-processing Manager Dict
+        :param provenanceTbl: Multi-processing Manager Dict
         :param jobInfo_Q: multi-processing queue of submitted jobs
         :param provObjMngr: Proxy Object of ProvenanceObj
         :param aggregatorLock: Process semaphor lock
         :return: None
         """
-        # Fill the provFSTbl dictionary up until the interval time is up
+        # Get the JobInfo for each jobid only once in each round
+        processed_jobids = set()
+        # Fill the provenanceTbl dictionary up until the interval time is up
         while not self.timesUp.is_set():
-            # all the MSDStat_Q, OSSStat_Q, and fileOP_Q are assumed as allFS_Q
-            if not jobInfo_Q.empty():
+            # Give it a second then check the jobInfo_Q again
+            self.timesUp.wait(1)
+            # check all the items in the queue while time is not up for this round
+            while not jobInfo_Q.empty() and not self.timesUp.is_set():
                 # Get aj JobInfo Request
                 job_req = jobInfo_Q.get()
+
+                # Do not get the JobInfo if it's already processed
+                if job_req in processed_jobids:
+                    continue
+
                 # Unpack the job_req
                 cluster, sched, jobid = job_req.split('_')
                 taskid = None
@@ -244,24 +252,19 @@ class Aggregator(Process):
                 jobInfo : JobInfo = jobScheduler.getJobInfo(cluster, sched, jobid, taskid)
                 # Get the  JobInfo Unique ID
                 uniq_id = jobInfo.uniqID()
-                print(f"---------- JobInfo: req:[{job_req}]  {jobInfo.jobid}  {jobInfo.status} -------")
-                # try:
-                #     if provFSTbl._callmethod('__getitem__', (uniq_id,)).jobInfo.status \
-                #             is not JobInfo.Status.FINISHED:
-                #         # Update the corresponding object in Provenance Table with this JobInfo object
-                #         provFSTbl._callmethod('__getitem__', (uniq_id,)).updateJobInfo(jobInfo)
-                # except KeyError:
-                #     print(f"------ keyError {uniq_id} ------ ")
-                #     jobInfo_Q.put(job_req)
-                if not provFSTbl.get(uniq_id):
-                    with aggregatorLock:
-                        provFSTbl[uniq_id] = provObjMngr.ProvenanceObj()
 
-                provFSTbl._callmethod('__getitem__', (uniq_id,)).updateJobInfo(jobInfo)
+                # If received a JobInfo that its uniq_id is not present in Provenance Table then ignore it
+                if not provenanceTbl.get(uniq_id):
+                    continue
+                # Update the JobInfo for this record in the Provenance Table
+                provenanceTbl._callmethod('__getitem__', (uniq_id,)).updateJobInfo(jobInfo)
+                # Check on this job again in next round if the status is not FINISHED yet
+                if jobInfo.status is not JobInfo.Status.FINISHED:
+                    processed_jobids.add(job_req)
 
-
-
-            self.timesUp.wait(1)
+        # Once the time's up, put back all the processed JobIDs back into the queue for next round
+        while processed_jobids:
+            jobInfo_Q.put(processed_jobids.pop())
 
     #
     # Clear the ChangeLogs
@@ -290,11 +293,37 @@ class Aggregator(Process):
                 # clear the Changelog
                 subprocess.check_output("lfs changelog_clear " + mdtTarget + " " + user + " " + str(endRec), shell=True)
 
+    #
+    # Clear the Provenance Table, but keep the uniq_id
+    #
+    def _clearProvenTbl(self, provenanceTbl: 'DictProxy'):
+        """
+            This method will clear the Provenance Table and keep the uniq_id keyes, since
+            it assumes they will be removed along with their values after the correspoding
+            job got finished.
+
+        :param provenanceTbl: The Provenance Table Object
+        :return: None
+        """
+        for uniq_id in provenanceTbl.keys():
+            provenObj : ProvenanceObj = provenanceTbl.get(uniq_id)
+            ProvenJobInfo: JobInfo = provenObj.jobInfo
+            # Delete the record from Provenance Table if job is already finished
+            if ProvenJobInfo:
+                if ProvenJobInfo.status is JobInfo.Status.FINISHED:
+                    provenanceTbl.pop(uniq_id)
+                    continue
+            # Otherwise, just reset the Provenance Object items
+            provenObj = provenanceTbl.get(uniq_id)
+            provenObj.reset()
+            provenanceTbl[uniq_id] = provenObj
+            provenanceTbl._callmethod('__getitem__', (uniq_id,)).reset()
+
 
 
     @staticmethod
-    def _tableView(provFSTbl : 'DictProxy') -> None:
-        provDict = provFSTbl._getvalue()
+    def _tableView(provenanceTbl : 'DictProxy') -> None:
+        provDict = provenanceTbl._getvalue()
         ptable = []
         jobAttrs = []
         mdsAttrs = []
@@ -376,7 +405,7 @@ class Aggregator(Process):
         while it's being shared among multiple processes
         """
         # Specify which methods can be exposed to the outside
-        _exposed_ = ('__getattribute__', '__setattr__', '__delattr__', 'insert_sorted', 'updateJobInfo')
+        _exposed_ = ('__getattribute__', '__setattr__', '__delattr__', 'insert_sorted', 'updateJobInfo', 'reset')
 
         # Create the proxy method that will be shared/called among multiple processes
         def updateJobInfo(self, jobInfo):
@@ -389,6 +418,12 @@ class Aggregator(Process):
             # _callmethod returns the result of a method of the proxy’s referent
             callmethod = object.__getattribute__(self, '_callmethod')
             return callmethod(self.insert_sorted.__name__, (value,))
+
+        # Create the proxy method that will be shared/called among multiple processes
+        def reset(self):
+            # _callmethod returns the result of a method of the proxy’s referent
+            callmethod = object.__getattribute__(self, '_callmethod')
+            callmethod(self.reset.__name__, ())
 
 #
 # The main Provenance Object that holds the collected/aggregated data
@@ -412,13 +447,12 @@ class ProvenanceObj(object):
     # update the jobInfo object
     def updateJobInfo(self, jobInfo):
         self.jobInfo = jobInfo
-        self.jobInfo.jobid = int(jobInfo.jobid)
+        #self.jobInfo.jobid = int(jobInfo.jobid)
 
     # This function receives any type of MDSDataObj, OSSDataObj, or FileOpObj
     # objects and uses the timestamp attribute as the key to sort them while
     # appending them their corresponding list
     def insert_sorted(self, dataObj):
-        self.jobid = dataObj.jobid
         # select timestamp as the key
         key = float(dataObj.timestamp)
         # define the corresponding list
@@ -441,6 +475,89 @@ class ProvenanceObj(object):
         # Insert the dataObj in a sorted list
         targetList.insert(inx, dataObj)
 
+    # Reset everything at some point to keep the memory usage optimized
+    # We can still keep the JobInfo data since they do not hold lot of space
+    def reset(self):
+        self.MDSDataObj_lst.clear()
+        self.OSSDataObj_lst.clear()
+        self.FileOpObj_lst.clear()
+        self.__MDSDataObj_keys.clear()
+        self.__OSSDataObj_keys.clear()
+        self.__FileOpObj_keys.clear()
+
+    # Find the last MDS object (sorted by time) per MDS and MDT
+    # Return a dictionary
+    def get_MDS_table(self) -> Dict:
+        mdsObjTbl = {}
+        for mdsData in self.MDSDataObj_lst:
+            # Add this mds to Table if it does not exist
+            if mdsData.mds_host not in mdsObjTbl.keys():
+                mdsObjTbl[mdsData.mds_host] = {}
+
+            # Add this mdt for this mds if it does not exist
+            if mdsData.mdt_target not in mdsObjTbl[mdsData.mds_host].keys():
+                mdsObjTbl[mdsData.mds_host][mdsData.mdt_target] = mdsData
+                continue
+
+            # Get the Previous data of this MDT/MDS
+            mdsObj = mdsObjTbl[mdsData.mds_host][mdsData.mdt_target]
+
+            # Update the object if the snapshot time is changed
+            if mdsData.snapshot_time != mdsObj.snapshot_time:
+                # Adjust the following properties
+                attrs = ["open", "close", "mknod", "link", "unlink", "mkdir", "rmdir", "rename",
+                         "getattr", "setattr", "samedir_rename", "crossdir_rename"]
+                for attr in attrs:
+                    mdsData_val = getattr(mdsData, attr)
+                    mdsObj_val = getattr(mdsObj, attr)
+                    setattr(mdsData, attr, (mdsData_val + mdsObj_val))
+
+                # Update the mdsObjTbl with current adjusted mdsData
+                mdsObjTbl[mdsData.mds_host][mdsData.mdt_target] = mdsData
+
+        # Return mdsObjTbl
+        return mdsObjTbl
+
+    # Aggregate all the OSS object data and put them in a table based on OST/OSS
+    # Return a dictionary
+    def get_OSS_table(self) -> Dict:
+        ossObjTbl = {}  # {oss : {ost : ossObj}}
+        for ossData in self.OSSDataObj_lst:
+            # Add this oss to Table if it does not exist
+            if ossData.oss_host not in ossObjTbl.keys():
+                ossObjTbl[ossData.oss_host] = {}
+
+            # Add this ost for this oss if does not exist
+            if ossData.ost_target not in ossObjTbl[ossData.oss_host].keys():
+                ossObjTbl[ossData.oss_host][ossData.ost_target] = ossData
+                continue
+
+            # Get the Previous data of this OST/OSS
+            ossObj = ossObjTbl[ossData.oss_host][ossData.ost_target]
+
+            # Update the object if the snapshot time is changed
+            if ossData.snapshot_time != ossObj.snapshot_time:
+                # Adjust read_byte data
+                ossData.read_bytes_min = min(ossData.read_bytes_min, ossObj.read_bytes_min)
+                ossData.read_bytes_max = max(ossData.read_bytes_max, ossObj.read_bytes_max)
+                ossData.read_bytes_sum = ossData.read_bytes_sum + ossObj.read_bytes_sum
+                # Adjust write_byte data
+                ossData.write_bytes_min = min(ossData.write_bytes_min, ossObj.write_bytes_min)
+                ossData.write_bytes_max = max(ossData.write_bytes_max, ossObj.write_bytes_max)
+                ossData.write_bytes_sum = ossData.write_bytes_sum + ossObj.write_bytes_sum
+                # Adjust the rest of the properties
+                attrs = ["getattr", "setattr", "punch", "sync", "destroy", "create"]
+                for attr in attrs:
+                    ossData_val = getattr(ossData, attr)
+                    ossObj_val = getattr(ossObj, attr)
+                    setattr(ossData, attr, (ossData_val + ossObj_val))
+
+                # Update the ossObjTbl with current adjusted ossData
+                ossObjTbl[ossData.oss_host][ossData.ost_target] = ossData
+
+        # Return the table
+        return ossObjTbl
+
 
 #
 # In case of error the following exception can be raised
@@ -452,7 +569,3 @@ class AggregatorException(Exception):
 
     def getMessage(self):
         return self.message
-
-
-#for attr in [atr for atr in dir(fsIOObj) if not atr.startswith('__')]:
-#    print(attr + " --> " + str(getattr(fsIOObj, attr)))

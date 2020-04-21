@@ -38,6 +38,7 @@ class MongoOPs:
             for uid, provenObj in provenData.items():
                 # Update/Insert JobInfo
                 jobinfo = provenObj.jobInfo
+                #============================ INSERT/UPDATE JobInfo===================================
                 # Insert/Update one job per document, Ignore JobInfos after the jobs is finished
                 update_query = {'uid' : uid, 'status' : {"$ne" : "FINISHED"}}
                 try:
@@ -49,24 +50,40 @@ class MongoOPs:
                 except DuplicateKeyError:
                     pass
 
+                #============================ INSERT/UPDATE MDS Data =================================
+                # Get a table of latest MDS_MDT data objects
+                mdsObj_tbl = provenObj.get_MDS_table()
                 # Update/Insert last collected MDS data
-                mdsObj = provenObj.MDSDataObj_lst[-1] if provenObj.MDSDataObj_lst else None
-                if mdsObj:
-                    # Insert/Update per each job running on each MDT of each MDS
-                    update_query = {'uid': uid, 'mds_host': mdsObj.mds_host, 'mdt_target': mdsObj.mdt_target}
-                    mongodb.update(MongoDB.Collections.MDS_STATS_COLL,
-                                   update_query,
-                                   mdsObj.to_dict())
+                if mdsObj_tbl:
+                    # Update/Insert per MDS and MDT
+                    for mds_host, mds in mdsObj_tbl.items():
+                        for mdt_target, mdsObj in mds.items():
+                            print(f"-------------- MDS   Snapshot_time: {mdsObj.snapshot_time}  Open: {mdsObj.open}  "
+                                  f"close: {mdsObj.close}")
+                            # Insert/Update the running job on each MDT of each MDS
+                            update_query = {'uid': uid, 'mds_host': mds_host, 'mdt_target': mdt_target}
+                            mongodb.update(MongoDB.Collections.MDS_STATS_COLL,
+                                           update_query,
+                                           mdsObj.to_dict())
 
-                # Update/Insert last collected OSS data
-                ossObj = provenObj.OSSDataObj_lst[-1] if provenObj.OSSDataObj_lst else None
-                if ossObj:
-                    # Insert/Update per each job running on each OST of each OSS
-                    update_query = {'uid': uid, 'mds_host': ossObj.oss_host, 'mdt_target': ossObj.ost_target}
-                    mongodb.update(MongoDB.Collections.OSS_STATS_COLL,
-                                   update_query,
-                                   ossObj.to_dict())
+                #============================ INSERT/UPDATE OSS Data =================================
+                # Get a table of latest OSS_OST data objects
+                ossObj_tbl = provenObj.get_OSS_table()
+                # Update/Insert last collected OSS_MDS data
+                if ossObj_tbl:
+                    # Update/Insert per OSS and OST
+                    for oss_host, ost_tble in ossObj_tbl.items():
+                        for ost_target, ossObj in ost_tble.items():
+                            print(f"-------------- OSS: {ossObj.oss_host}  Snapshot_time: {ossObj.snapshot_time}  "
+                                  f"Max_write: {ossObj.write_bytes_max}  Min_Write: {ossObj.write_bytes_min}  "
+                                  f"Sum_Write: {ossObj.write_bytes_sum}")
+                            # Insert/Update per each job running on each OST of each OSS
+                            update_query = {'uid': uid, 'oss_host': oss_host, 'oss_target': ost_target}
+                            mongodb.update(MongoDB.Collections.OSS_STATS_COLL,
+                                           update_query,
+                                           ossObj.to_dict())
 
+                # ============================ INSERT/UPDATE File OPs ================================
                 # Insert collected File Operations data (No update)
                 fopObj = provenObj.FileOpObj_lst
                 fopObj_lst = []

@@ -84,7 +84,7 @@ class JobScheduler:
             # The job has been finished and no more data should be aggregated for this job
             finishedJob = cluster + '_' + sched + '_' + str(jobId) + ("." + str(taskid) if taskid else "")
             finJobDB = FinishedJobs()
-            finJobDB.store(finishedJob)
+            finJobDB.add(finishedJob)
             return jobInfo
 
         # -------------- UGE Restful API -------------------------
@@ -214,26 +214,3 @@ class JobSchedulerException(Exception):
     def getMessage(self):
         return self.message
 
-
-if __name__ == "__main__":
-    import sys, time, os
-    from tabulate import tabulate
-    scheduler = JobScheduler()
-    jobid = int(sys.argv[1])
-    taskId = None
-    if len(sys.argv) > 2:
-        taskId = int(sys.argv[2])
-    while True:
-        jobinfo = scheduler.getJobInfo('genius', 'uge', jobid, taskId)
-        # ---> Print jobinfo
-        jobTbl = []
-        for attr in [atr for atr in dir(jobinfo) if (not atr.startswith('__'))
-                                                   and (not callable(getattr(jobinfo, atr)))]:
-            jobTbl.append([attr, getattr(jobinfo, attr)])
-
-        os.system("clear")
-        print(tabulate(jobTbl, headers=["Attribute:", "Value:"], tablefmt="github") + "\n")
-
-        # if jobinfo.status is JobInfo.Status.FINISHED:
-        #     break
-        time.sleep(5)

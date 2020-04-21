@@ -36,10 +36,13 @@ class CollectIOstats(Thread):
         self.config = AgentConfig()
         self.jobstat_Q = jobstat_Q
         self.hostname = socket.gethostname()
-        # Set JobStat cleanup interval
-        if self.hostname in self.config.getMDS_hosts():
-            if self._is_MGS():
-              self._setMaxAutoCleanup(self.config.getMaxJobstatAge())
+        try:
+            ## --if self.hostname in self.config.getMDS_hosts():
+            # Set JobStat cleanup interval
+            self._setMaxAutoCleanup(self.config.getMaxJobstatAge())
+
+        except ConfigReadExcetion as confExp:
+            log(Mode.PUBLISHER, confExp.getMessage())
 
     # Implement Thread.run()
     def run(self):
@@ -57,7 +60,7 @@ class CollectIOstats(Thread):
                     if jobstat_out.strip():
                         self.jobstat_Q.put((target, jobstat_out))
                         # Clear JobStats logs immediately to free space
-                        ##-- self._clearJobStats(serverParam)
+                        ##--self._clearJobStats(serverParam, target)
 
                 # Set time interval for Collecting IO stats
                 waitInterval = self.config.getJobstatsInterval()
@@ -87,7 +90,11 @@ class CollectIOstats(Thread):
     # Read the Jobstats from Lustre logs
     def _getJobStats(self, serverParam, fsname):
         param = '.'.join([serverParam, fsname, 'job_stats'])
-        return subprocess.check_output("lctl get_param " + param + " | tail -n +2", shell=True)
+        read_jobstat = "lctl get_param " + param + " | tail -n +2 "
+        clear_jobstat = " lctl set_param " + param + "=clear &>/dev/null"
+        return subprocess.check_output('&&'.join([read_jobstat, clear_jobstat]), shell=True)
+        # param = '.'.join([serverParam, fsname, 'job_stats'])
+        # return subprocess.check_output("lctl get_param " + param + " | tail -n +2", shell=True)
 
     # Check and see if the server is MGS (Lustre Management Server)
     def _is_MGS(self):
@@ -96,8 +103,8 @@ class CollectIOstats(Thread):
         return False
 
     # Clear the accumulated JobStats from Luster logs
-    def _clearJobStats(self, serverParam):
-        subprocess.check_output("lctl set_param " + serverParam + ".*.job_stats=clear", shell=True)
+    def _clearJobStats(self, serverParam, fsname):
+        subprocess.check_output("lctl set_param " + serverParam + "." + fsname +".job_stats=clear", shell=True)
 
     # Set the Maximum auto-cleanup Interval for jobstats
     def _setMaxAutoCleanup(self, interval):
@@ -117,9 +124,12 @@ class PublishIOstats(Thread):
 
         try:
             self.producer = Producer()
+            self. maxJobStatAge = self.config.getMaxJobstatAge()
+        except CommunicationExp as commExp:
+            log(Mode.PUBLISHER, commExp.getMessage())
 
-        except CommunicationExp:
-            raise
+        except ConfigReadExcetion as confExp:
+            log(Mode.PUBLISHER, confExp.getMessage())
 
 
     def run(self):
@@ -129,6 +139,7 @@ class PublishIOstats(Thread):
                 timestamp = time.time()
                 message_body = {"server" : self.hostname,
                                 "timestamp" : timestamp,
+                                "maxAge" : self.maxJobStatAge,
                                 "fstarget" : jobstat_msg[0],
                                 "output": jobstat_msg[1]}
 

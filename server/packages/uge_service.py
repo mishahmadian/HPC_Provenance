@@ -14,7 +14,6 @@ from config import ServerConfig
 import json, urllib.request
 from typing import List
 import scheduler
-import sys
 #
 # This class communicates with UGERestful API in order to collect required information
 class UGE:
@@ -177,6 +176,8 @@ class UGE:
     # process, a separate process in an specific intervals will take care of that.
     #
     def __UGE_Accounting_Service(self, acctJobIdReq_Q : Queue, acctJobInfoRes_Q : Queue):
+        # Get the waiting time
+        wait_Intv = self.config.getUGEAcctRPCIntv()
         while not self.__event.is_set():
             job_req_list = []
             # get all job_ids in one snapshot
@@ -202,7 +203,7 @@ class UGE:
                     acctJobInfoRes_Q.put(jobInfo)
 
             # Wait the amount of time that is defined under [uge] section
-            self.__event.wait(self.config.getUGEAcctRPCIntv())
+            self.__event.wait(wait_Intv)
 
 #
 # In any case of Error, Exception, or Mistake UGEServiceException will be raised

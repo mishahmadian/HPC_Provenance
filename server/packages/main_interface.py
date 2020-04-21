@@ -17,6 +17,7 @@ from file_op_logs import ChangeLogCollector
 from communication import CommunicationExp
 from exceptions import ProvenanceExitExp
 from config import ConfigReadExcetion
+from persistant import FinishedJobs
 from multiprocessing import Queue
 from logger import log, Mode
 from time import sleep
@@ -51,8 +52,11 @@ class Main_Interface:
             #
             # Prepare Databases
             mongoDB = MongoDB()
-            mongoDB.prepare()
+            mongoDB.init()
             mongoDB.close()
+            # Initialize FinishedJobs File
+            finJobsDB = FinishedJobs()
+            finJobsDB.init()
             # IO Stats Listener Process
             self.IOStatsLsn_Proc = IOStatsListener(self.MSDStat_Q, self.OSSStat_Q)
             #self.IOStatsLsn_Proc.daemon = True

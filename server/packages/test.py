@@ -701,6 +701,94 @@ mydata = {
     "username" : None,
     "wallclock" : None
 }
+
+myoss = {
+    "uid" : "afdb80123f618e2367533a38381e0682",
+    "cluster" : "genius",
+    "create" : 0,
+    "destroy" : 0,
+    "getattr" : 0,
+    "jobid" : "706",
+    "oss_host" : "oss1",
+    "ost_target" : "test-OST0001",
+    "procid" : None,
+    "punch" : 0,
+    "read_bytes" : 0,
+    "read_bytes_max" : 0,
+    "read_bytes_min" : 0,
+    "read_bytes_sum" : 0,
+    "sched_type" : "uge",
+    "setattr" : 0,
+    "snapshot_time" : 1586910281,
+    "sync" : 0,
+    "taskid" : None,
+    "timestamp" : 1586910310.754752,
+    "write_bytes" : 256,
+    "write_bytes_max" : 6666666,
+    "write_bytes_min" : 3333333,
+    "write_bytes_sum" : 1073741824
+}
+
+query = {"uid" : myoss["uid"], 'oss_host': myoss["oss_host"], 'ost_target': myoss["ost_target"]}
+
+update_q = {
+    "$set" : myoss,
+    "$max" : {"read_bytes_max" : myoss.pop("read_bytes_max"), "write_bytes_max" : myoss.pop("write_bytes_max")},
+    "$min" : {"read_bytes_min" : myoss.pop("read_bytes_min"), "write_bytes_min" : myoss.pop("write_bytes_min")},
+    "$max" : {
+            "$cond" : {
+                "if" : { "$ne" : ["$timestamp", myoss.get("timestamp")] },
+                "then" : {
+                    "$max" : {
+                        "read_bytes_max" : myoss.pop("read_bytes_max"),
+                        "write_bytes_max" : myoss.pop("write_bytes_max")
+                    },
+                }, "else" : {
+                    None
+                }
+            }
+        },
+}
+
+# update_q = {
+#         #"$set" : { "write_bytes_max" : {"$max" : {"write_bytes_max" : myoss["write_bytes_max"]}} }
+#         #"$set" : {"write_bytes_max" : myoss["write_bytes_max"]}
+#         "$max" : {"write_bytes_max" : myoss["write_bytes_max"]},
+#         "$inc" : {"write_bytes_sum" : myoss["write_bytes_max"]}
+#     }
+
+# update_q = {
+#
+#     "$set" : myoss,
+#     "$max" : {"read_bytes_max" : myoss.pop("read_bytes_max"), "write_bytes_max" : myoss.pop("write_bytes_max")},
+#     "$min" : {"read_bytes_min" : myoss.pop("read_bytes_min"), "write_bytes_min" : myoss.pop("write_bytes_min")}
+# }
+# from pprint import PrettyPrinter
+# pp = PrettyPrinter(indent=4)
+# pp.pprint(update_q)
+
+
+
 mongodb = MongoDB()
-mongodb.prepare()
+# mongodb.prepare()
 #mongodb.insert(MongoDB.Collections.JOB_INFO_COLL, mydata)
+if mongodb.update(MongoDB.Collections.OSS_STATS_COLL, query, update_q) > 0:
+    print("Successful")
+
+mongodb.close()
+
+# from datetime import datetime
+# import sys
+# t1 = time.time()
+# print(str(t1))
+# time.sleep(5)
+# t2 = time.time()
+# print(str(t2))
+# print(str(t2 - t1))
+
+# ts1 = 1587398469.845516 # 1587398447.753704 #1587397581
+# ts2 = 1587398487.893884 #1587397563
+# dt_obj1 = datetime.fromtimestamp(ts1)
+# dt_obj2 = datetime.fromtimestamp(ts2)
+# print(dt_obj1.strftime("%H:%M:%S"))
+# print(dt_obj2.strftime("%H:%M:%S"))

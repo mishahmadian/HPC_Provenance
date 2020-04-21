@@ -41,7 +41,7 @@ class MongoDB:
     #
     # Prepare Database when application starts running
     #
-    def prepare(self) -> None:
+    def init(self) -> None:
         """
             This method should be called when the program gets started
             to prepare the database by performing some actions such as:
@@ -51,18 +51,26 @@ class MongoDB:
         for collection in self.Collections:
             # Get all available collections of this database
             allcolls = self._mongoDB.collection_names()
-            # Create Index for JobInfo
-            if collection.value == "jobinfo":
-                # If JobInfo is not created yet
-                if not collection.value in allcolls:
-                    coll = self._mongoDB[collection.value]
+            # If JobInfo is not created yet
+            if not collection.value in allcolls:
+                coll = self._mongoDB[collection.value]
+
+                # Create Index for JobInfo
+                if collection.value == "jobinfo":
                     # Define the Index(es)
                     uid_uniq_inx = IndexModel([("uid", TEXT), ("jobid", ASCENDING)],
                                               name="jobinfo_uid_uniq_inx", unique=True)
                     # Add/Create indexes
                     coll.create_indexes([uid_uniq_inx])
-                    #
-                    log(Mode.DB_MANAGER, "The 'jobinfo' collection was created and Indexed")
+
+                ##elif collection.value == "":
+                else:
+                    continue
+
+                # Log the action
+                log(Mode.DB_MANAGER, f"The '{collection.value}' collection was created and Indexed")
+
+
 
 
     #
@@ -107,14 +115,14 @@ class MongoDB:
     #
     # Main Update Method for MongoDB
     #
-    def update(self, collection: 'MongoDB.Collections', doc_query: Dict, data: Union[Dict, List]) -> bool:
+    def update(self, collection: 'MongoDB.Collections', doc_query: Dict, data: Union[Dict, List]) -> int:
         """
         Update a document selected by doc_query with new data
 
         :param collection: MongoDB.Collections
         :param doc_query: Dict
         :param data: Dict
-        :return: Boolean
+        :return: Integer: (-1: Error, 0: Failed, 1: Upserted, 2: Updated)
         """
         if not isinstance(collection, self.Collections):
             raise DBManagerException("(update) The type of 'Collection' is wrong"
@@ -135,11 +143,16 @@ class MongoDB:
             newData = {"$set" : data}
             # update the database if both query and data are defined
             if doc_query and data:
-                result = coll.update_one(doc_query, newData, upsert=True)
+                result = coll.update(doc_query, data, upsert=True, multi=False)
                 # Return the update success
-                return result.modified_count > 0
+                if result['nModified'] > 0:
+                    return 2
+                elif result.get('upserted', None):
+                    return 1
+                else:
+                    return 0
             else:
-                return False
+                return -1
 
         except DuplicateKeyError as dupExp:
             raise dupExp
