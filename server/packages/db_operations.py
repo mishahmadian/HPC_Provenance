@@ -42,9 +42,21 @@ class MongoOPs:
                 # Insert/Update one job per document, Ignore JobInfos after the jobs is finished
                 update_query = {'uid' : uid, 'status' : {"$ne" : "FINISHED"}}
                 try:
+                    jobinfo_doc = jobinfo.to_dict()
+
+                    # Add Update_Time after each update
+                    jobinfo_doc["update_time"] = "$$NOW"
+
+                    # Make the update request
+                    jobinfo_update = {
+                        "$set" : jobinfo_doc,
+                        # Add Insert_Time upon first insertion
+                        "$setOnInsert" : {"insert_time" : "$$NOW"}
+                    }
+
                     mongodb.update(MongoDB.Collections.JOB_INFO_COLL,
                                    update_query,
-                                   jobinfo.to_dict())
+                                   jobinfo_update)
 
                 # Ignore the duplicate key error after the job is finished
                 except DuplicateKeyError:
@@ -61,10 +73,37 @@ class MongoOPs:
                             print(f"-------------- MDS   Snapshot_time: {mdsObj.snapshot_time}  Open: {mdsObj.open}  "
                                   f"close: {mdsObj.close}")
                             # Insert/Update the running job on each MDT of each MDS
+                            # Create Update query
                             update_query = {'uid': uid, 'mds_host': mds_host, 'mdt_target': mdt_target}
+
+                            # Modify the ossObj to gets updated properly
+                            mdsObj_doc = mdsObj.to_dict()
+
+                            # Add up these fields of current data with those already stored if
+                            # snapshot_time has been changed since last data aggregation
+                            sum_fields = ["open", "close", "mknod", "link", "unlink", "mkdir", "rmdir", "rename",
+                                          "getattr", "setattr", "samedir_rename", "crossdir_rename"]
+                            for sum_field in sum_fields:
+                                mdsObj_doc[sum_field] = {
+                                    "$sum": [
+                                        f"${sum_field}",
+                                        {"$cond": [{"$ne": ["$snapshot_time", mdsObj_doc.get("snapshot_time")]},
+                                                   mdsObj_doc.get(sum_field), 0]}
+                                    ]
+                                }
+                            # Add Insert_Time upon the first insertion
+                            mdsObj_doc["insert_time"] = {
+                                "$cond": [{"$not": ["$insert_time"]}, "$$NOW", "$insert_time"]
+                            }
+                            # Add Update_time whenever the field gets update
+                            mdsObj_doc["update_time"] = "$$NOW"
+
+                            # Specify the update document request
+                            mds_update_req = [{"$set": mdsObj_doc}]
+
                             mongodb.update(MongoDB.Collections.MDS_STATS_COLL,
-                                           update_query,
-                                           mdsObj.to_dict())
+                                           update_query, mds_update_req,
+                                           runcommand=True)
 
                 #============================ INSERT/UPDATE OSS Data =================================
                 # Get a table of latest OSS_OST data objects
@@ -74,14 +113,47 @@ class MongoOPs:
                     # Update/Insert per OSS and OST
                     for oss_host, ost_tble in ossObj_tbl.items():
                         for ost_target, ossObj in ost_tble.items():
-                            print(f"-------------- OSS: {ossObj.oss_host}  Snapshot_time: {ossObj.snapshot_time}  "
-                                  f"Max_write: {ossObj.write_bytes_max}  Min_Write: {ossObj.write_bytes_min}  "
-                                  f"Sum_Write: {ossObj.write_bytes_sum}")
                             # Insert/Update per each job running on each OST of each OSS
+                            # Create Update query
                             update_query = {'uid': uid, 'oss_host': oss_host, 'oss_target': ost_target}
+
+                            # Modify the ossObj to gets updated properly
+                            ossObj_doc = ossObj.to_dict()
+                            # Choose the Max value between these current data and already stored ones
+                            for max_field in ["read_bytes_max", "write_bytes_max"]:
+                                ossObj_doc[max_field] = {
+                                    "$max" : [f"${max_field}", ossObj_doc.get(max_field)]
+                                }
+                            # Choose the Min value between these current data and already stored ones
+                            for min_field in ["read_bytes_min", "write_bytes_min"]:
+                                ossObj_doc[min_field] = {
+                                    "$min" : [f"${min_field}", ossObj_doc.get(min_field)]
+                                }
+                            # Add up these fields of current data with those already stored if
+                            # snapshot_time has been changed since last data aggregation
+                            sum_fields = ["read_bytes", "write_bytes", "read_bytes_sum", "write_bytes_sum",
+                                          "getattr", "setattr", "punch", "sync", "destroy", "create"]
+                            for sum_field in sum_fields:
+                                ossObj_doc[sum_field] = {
+                                    "$sum": [
+                                        f"${sum_field}",
+                                        {"$cond": [{"$ne": ["$snapshot_time", ossObj_doc.get("snapshot_time")]},
+                                                   ossObj_doc.get(sum_field), 0]}
+                                    ]
+                                }
+                            # Add Insert_Time upon the first insertion
+                            ossObj_doc["insert_time"] = {
+                                "$cond": [{"$not": ["$insert_time"]}, "$$NOW", "$insert_time"]
+                            }
+                            # Add Update_time whenever the field gets update
+                            ossObj_doc["update_time"] = "$$NOW"
+
+                            # Specify the update document request
+                            oss_update_req = [{"$set" : ossObj_doc}]
+
                             mongodb.update(MongoDB.Collections.OSS_STATS_COLL,
-                                           update_query,
-                                           ossObj.to_dict())
+                                           update_query, oss_update_req,
+                                           runcommand= True)
 
                 # ============================ INSERT/UPDATE File OPs ================================
                 # Insert collected File Operations data (No update)
@@ -89,7 +161,10 @@ class MongoOPs:
                 fopObj_lst = []
                 # Collect all file operations and insert all at once
                 for fopData in fopObj:
-                    fopObj_lst.append(fopData.to_dict())
+                    fopData_doc = fopData.to_dict()
+                    # Add Insert_time for each record
+                    fopData_doc["insert_time"] = "$$NOW"
+                    fopObj_lst.append(fopData_doc)
                 # Insert all the fop object in one operation
                 mongodb.insert(MongoDB.Collections.FILE_OP_COLL, fopObj_lst)
 

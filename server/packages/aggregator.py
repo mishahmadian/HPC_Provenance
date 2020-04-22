@@ -540,13 +540,12 @@ class ProvenanceObj(object):
                 # Adjust read_byte data
                 ossData.read_bytes_min = min(ossData.read_bytes_min, ossObj.read_bytes_min)
                 ossData.read_bytes_max = max(ossData.read_bytes_max, ossObj.read_bytes_max)
-                ossData.read_bytes_sum = ossData.read_bytes_sum + ossObj.read_bytes_sum
                 # Adjust write_byte data
                 ossData.write_bytes_min = min(ossData.write_bytes_min, ossObj.write_bytes_min)
                 ossData.write_bytes_max = max(ossData.write_bytes_max, ossObj.write_bytes_max)
-                ossData.write_bytes_sum = ossData.write_bytes_sum + ossObj.write_bytes_sum
                 # Adjust the rest of the properties
-                attrs = ["getattr", "setattr", "punch", "sync", "destroy", "create"]
+                attrs = ["read_bytes", "write_bytes", "read_bytes_sum", "write_bytes_sum",
+                         "getattr", "setattr", "punch", "sync", "destroy", "create"]
                 for attr in attrs:
                     ossData_val = getattr(ossData, attr)
                     ossObj_val = getattr(ossObj, attr)

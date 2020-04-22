@@ -115,14 +115,18 @@ class MongoDB:
     #
     # Main Update Method for MongoDB
     #
-    def update(self, collection: 'MongoDB.Collections', doc_query: Dict, data: Union[Dict, List]) -> int:
+    def update(self, collection: 'MongoDB.Collections', doc_query: Dict, data: Union[Dict, List],
+               runcommand: bool = False, update_many: bool = False, upsert: bool = True) -> int:
         """
         Update a document selected by doc_query with new data
 
         :param collection: MongoDB.Collections
         :param doc_query: Dict
         :param data: Dict
-        :return: Integer: (-1: Error, 0: Failed, 1: Upserted, 2: Updated)
+        :param runcommand: (defualt False) Run this update as a database command
+        :param update_many: (defualt False) treat the update as update_many
+        :param upsert: (defualt True) Insert if data does not exist
+        :return: Integer: (-2: Failed, -1: Error, 0: Unknown, 1: Upserted, 2: Updated)
         """
         if not isinstance(collection, self.Collections):
             raise DBManagerException("(update) The type of 'Collection' is wrong"
@@ -139,20 +143,44 @@ class MongoDB:
         try:
             # Selects the collection of this database
             coll = self._mongoDB[collection.value]
-            # Set the new data values
-            newData = {"$set" : data}
             # update the database if both query and data are defined
             if doc_query and data:
-                result = coll.update(doc_query, data, upsert=True, multi=False)
+                # If true, then run the Update command as DB RunCommand
+                if runcommand:
+                    # Generate an Update Operator
+                    update_command = {
+                        "update" : collection.value,
+                        "updates" : [{
+                            "q" : doc_query,
+                            "u" : data,
+                            "upsert" : upsert,
+                            "multi" : update_many
+                        }],
+                        "ordered": False
+                    }
+                    result = self._mongoDB.command(update_command, check=True)
+                    print(str(result))
+                # Otherwise, update using the collection update command
+                else:
+                    # Update the Data
+                    if isinstance(data, dict) and data.get("$set", None):
+                        update_data = data
+                    else:
+                        update_data = {"$set": data}
+
+                    result = coll.update(doc_query, update_data, upsert=upsert, multi=update_many)
+
                 # Return the update success
                 if result['nModified'] > 0:
                     return 2
                 elif result.get('upserted', None):
                     return 1
+                elif result.get('writeErrors', None):
+                    return -1
                 else:
                     return 0
             else:
-                return -1
+                return -2
 
         except DuplicateKeyError as dupExp:
             raise dupExp
@@ -210,9 +238,9 @@ class MongoDB:
         colls = self._mongoDB.collection_names()
         if not "jobinfo2" in colls:
             print("Creating Index")
-            coll = self._mongoDB['jobinfo2']
-            uid_index = IndexModel([("uid", HASHED)], name="uid_uniq_inx", unique=True)
-            coll.create_indexes([uid_index])
+            # coll = self._mongoDB['jobinfo2']
+            # uid_index = IndexModel([("uid", HASHED)], name="uid_uniq_inx", unique=True)
+            # coll.create_indexes([uid_index])
 
     #
     # MongoDB Collection Enum

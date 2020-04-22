@@ -5,21 +5,30 @@
 
  Misha ahmadian (misha.ahmadian@ttu.edu)
 """
+from subprocess import run, CalledProcessError, STDOUT, DEVNULL
 from schedConfig import SchedConfig, ConfigReadExcetion
 from schedComm import SchedConnection, CommunicationExp
 from ugeSchedService import UGEAccountingInfo
 from schedLogger import log, Mode
 import signal
 import json
+import sys
 
 class SchedMain:
     def __init__(self):
-        self._config = SchedConfig()
-        self._rpc_queue = self._config.getRPC_queue()
-        self._rpc_proc = None
+        try:
+            self._config = SchedConfig()
+            self._rpc_queue = self._config.getRPC_queue()
+            self._rpc_vhost = self._config.getVhost()
+            self._rpc_proc = None
 
-        signal.signal(signal.SIGINT, self.agent_exit)
-        signal.signal(signal.SIGTERM, self.agent_exit)
+            signal.signal(signal.SIGINT, self.agent_exit)
+            signal.signal(signal.SIGTERM, self.agent_exit)
+
+            self._cleanup_RPC_que()
+
+        except ConfigReadExcetion as confExp:
+            log(Mode.MAIN_SCHED, confExp.getMessage())
 
     # Handle the SIGINT and SIGTERM signals in order to shutdown
     # the Collector agent
@@ -69,6 +78,18 @@ class SchedMain:
 
         # else return nothing
         return 'NONE'
+
+    #
+    # Cleanup the RabbitMQ RPC Queue
+    #
+    def _cleanup_RPC_que(self):
+        try:
+            run(f"rabbitmqctl -p {self._rpc_vhost} purge_queue {self._rpc_queue}",
+                shell=True, check=True, stdout=DEVNULL)
+        except CalledProcessError as runExp:
+            log(Mode.MAIN_SCHED, str(runExp))
+            sys.exit(-1)
+
 #
 #  Exception will be raised when SIGINT or SIGTERM are called
 #
