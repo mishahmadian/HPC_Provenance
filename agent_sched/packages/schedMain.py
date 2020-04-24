@@ -5,7 +5,7 @@
 
  Misha ahmadian (misha.ahmadian@ttu.edu)
 """
-from subprocess import run, CalledProcessError, STDOUT, DEVNULL
+from subprocess import run, CalledProcessError, DEVNULL
 from schedConfig import SchedConfig, ConfigReadExcetion
 from schedComm import SchedConnection, CommunicationExp
 from ugeSchedService import UGEAccountingInfo

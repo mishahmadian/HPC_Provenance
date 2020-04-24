@@ -788,13 +788,13 @@ update_data = [
 # print(str(b_update_q))
 # sys.exit(0)
 
-mongodb = MongoDB()
-# mongodb.prepare()
-#mongodb.insert(MongoDB.Collections.JOB_INFO_COLL, mydata)
-if mongodb.update(MongoDB.Collections.OSS_STATS_COLL, query, update_data, runcommand=True) > 0:
-    print("Successful")
-
-mongodb.close()
+# mongodb = MongoDB()
+# # mongodb.prepare()
+# #mongodb.insert(MongoDB.Collections.JOB_INFO_COLL, mydata)
+# if mongodb.update(MongoDB.Collections.OSS_STATS_COLL, query, update_data, runcommand=True) > 0:
+#     print("Successful")
+#
+# mongodb.close()
 
 # {
 #     "$cond" : {
@@ -826,3 +826,12 @@ mongodb.close()
 # from pprint import PrettyPrinter
 # pp = PrettyPrinter(indent=4)
 # pp.pprint(update_q)
+
+from scheduler import JobInfo, UGEJobInfo
+
+schedClasses = [JobInfo, UGEJobInfo]
+jobinfo = UGEJobInfo()
+
+
+for sched in schedClasses:
+    print(str(isinstance(jobinfo, sched)))

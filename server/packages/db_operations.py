@@ -8,6 +8,8 @@
 """
 from db_manager import MongoDB, DBManagerException
 from pymongo.errors import DuplicateKeyError
+from scheduler import UGEJobInfo
+from datetime import datetime
 from logger import log, Mode
 import aggregator as aggr
 from typing import Dict
@@ -39,28 +41,30 @@ class MongoOPs:
                 # Update/Insert JobInfo
                 jobinfo = provenObj.jobInfo
                 #============================ INSERT/UPDATE JobInfo===================================
-                # Insert/Update one job per document, Ignore JobInfos after the jobs is finished
-                update_query = {'uid' : uid, 'status' : {"$ne" : "FINISHED"}}
-                try:
-                    jobinfo_doc = jobinfo.to_dict()
+                # First check the JobInfo type. The JobInfo should be a subclass of the original JobInfo
+                # Otherwise, it's not "complete". In some rare cases the JobInfo gets created but before
+                # gets a chance to be filled out by the "JobScheduler" class, it comes here to be stored
+                # in database. That should be ignored!
+                if jobinfo and isinstance(jobinfo, UGEJobInfo): # 'or' isinstance(Slurm...)
+                    # Insert/Update one job per document, Ignore JobInfos after the jobs is finished
+                    update_query = {'uid' : uid, 'status' : {"$ne" : "FINISHED"}}
+                    try:
+                        # Make the update request
+                        jobinfo_update = {
+                            "$set" : jobinfo.to_dict(),
+                            # Add create_time upon first insertion
+                            "$setOnInsert" : {"create_time" : datetime.utcnow()},
+                            # Add modified_time upon each update
+                            "$currentDate" : {"modified_time" : True}
+                        }
 
-                    # Add Update_Time after each update
-                    jobinfo_doc["update_time"] = "$$NOW"
+                        mongodb.update(MongoDB.Collections.JOB_INFO_COLL,
+                                       update_query,
+                                       jobinfo_update)
 
-                    # Make the update request
-                    jobinfo_update = {
-                        "$set" : jobinfo_doc,
-                        # Add Insert_Time upon first insertion
-                        "$setOnInsert" : {"insert_time" : "$$NOW"}
-                    }
-
-                    mongodb.update(MongoDB.Collections.JOB_INFO_COLL,
-                                   update_query,
-                                   jobinfo_update)
-
-                # Ignore the duplicate key error after the job is finished
-                except DuplicateKeyError:
-                    pass
+                    # Ignore the duplicate key error after the job is finished
+                    except DuplicateKeyError:
+                        pass
 
                 #============================ INSERT/UPDATE MDS Data =================================
                 # Get a table of latest MDS_MDT data objects
@@ -70,8 +74,6 @@ class MongoOPs:
                     # Update/Insert per MDS and MDT
                     for mds_host, mds in mdsObj_tbl.items():
                         for mdt_target, mdsObj in mds.items():
-                            print(f"-------------- MDS   Snapshot_time: {mdsObj.snapshot_time}  Open: {mdsObj.open}  "
-                                  f"close: {mdsObj.close}")
                             # Insert/Update the running job on each MDT of each MDS
                             # Create Update query
                             update_query = {'uid': uid, 'mds_host': mds_host, 'mdt_target': mdt_target}
@@ -91,12 +93,12 @@ class MongoOPs:
                                                    mdsObj_doc.get(sum_field), 0]}
                                     ]
                                 }
-                            # Add Insert_Time upon the first insertion
-                            mdsObj_doc["insert_time"] = {
-                                "$cond": [{"$not": ["$insert_time"]}, "$$NOW", "$insert_time"]
+                            # Add create_time upon the first insertion
+                            mdsObj_doc["create_time"] = {
+                                "$cond": [{"$not": ["$create_time"]}, "$$NOW", "$create_time"]
                             }
-                            # Add Update_time whenever the field gets update
-                            mdsObj_doc["update_time"] = "$$NOW"
+                            # Add modified_time whenever the field gets update
+                            mdsObj_doc["modified_time"] = "$$NOW"
 
                             # Specify the update document request
                             mds_update_req = [{"$set": mdsObj_doc}]
@@ -141,12 +143,12 @@ class MongoOPs:
                                                    ossObj_doc.get(sum_field), 0]}
                                     ]
                                 }
-                            # Add Insert_Time upon the first insertion
-                            ossObj_doc["insert_time"] = {
-                                "$cond": [{"$not": ["$insert_time"]}, "$$NOW", "$insert_time"]
+                            # Add create_time upon the first insertion
+                            ossObj_doc["create_time"] = {
+                                "$cond": [{"$not": ["$create_time"]}, "$$NOW", "$create_time"]
                             }
-                            # Add Update_time whenever the field gets update
-                            ossObj_doc["update_time"] = "$$NOW"
+                            # Add modified_time whenever the field gets update
+                            ossObj_doc["modified_time"] = "$$NOW"
 
                             # Specify the update document request
                             oss_update_req = [{"$set" : ossObj_doc}]
@@ -162,8 +164,8 @@ class MongoOPs:
                 # Collect all file operations and insert all at once
                 for fopData in fopObj:
                     fopData_doc = fopData.to_dict()
-                    # Add Insert_time for each record
-                    fopData_doc["insert_time"] = "$$NOW"
+                    # Add create_time for each record
+                    fopData_doc["create_time"] = datetime.utcnow()
                     fopObj_lst.append(fopData_doc)
                 # Insert all the fop object in one operation
                 mongodb.insert(MongoDB.Collections.FILE_OP_COLL, fopObj_lst)
@@ -173,6 +175,6 @@ class MongoOPs:
 
         finally:
             # Close the MongoClient
-            print("=== Dumped to MongoDB ===")
+            #print("=== Dumped to MongoDB ===")
             if mongodb:
                 mongodb.close()

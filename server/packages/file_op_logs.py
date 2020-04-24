@@ -11,13 +11,13 @@
  Misha ahmadian (misha.ahmadian@ttu.edu)
 """
 from multiprocessing import Process, Event, Queue, Pool, cpu_count
+from subprocess import check_output, CalledProcessError, DEVNULL
 from config import ServerConfig, ConfigReadExcetion
 from exceptions import ProvenanceExitExp
 from datetime import datetime
 from logger import log, Mode
 from typing import List
 from math import ceil
-import subprocess
 import hashlib
 import ctypes
 import os
@@ -119,11 +119,11 @@ class ChangeLogCollector(Process):
         :param startRec: Integer -  Captures from where it left off
         :return: Line-separated records
         """
-        return subprocess.check_output("lfs changelog " + mdtTarget + " " + str(startRec + 1), shell=True).decode("utf-8")
+        return check_output("lfs changelog " + mdtTarget + " " + str(startRec + 1), shell=True).decode("utf-8")
 
     # Clear old ChangeLogs records
     def _clearChangeLogs(self, mdtTarget: str, user: str, endRec: int):
-        subprocess.check_output("lfs changelog_clear " + mdtTarget + " " + user + " " + str(endRec), shell=True)
+        check_output("lfs changelog_clear " + mdtTarget + " " + user + " " + str(endRec), shell=True)
 
     # Convert (Parse & Compile) the ChangeLog output to FileOpObj object
     @staticmethod
@@ -231,10 +231,9 @@ class FileOpObj(object):
     def setTargetFid(self, tfid, mdtTarget):
         self.target_fid = tfid.split('=')[1].strip()
         try:
-            with open(os.devnull, 'w') as nullDev:
-                self.target_path = subprocess.check_output("lfs fid2path " + mdtTarget + " " + self.target_fid,
-                                                           shell=True, stderr=nullDev).decode("utf-8").strip()
-        except subprocess.CalledProcessError:
+            self.target_path = check_output("lfs fid2path --link 1 " + mdtTarget + " " + self.target_fid,
+                                                       shell=True, stderr=DEVNULL).decode("utf-8").strip()
+        except CalledProcessError:
             # The file has been removed already and the fid is invalid
             self.target_path = "File Not Exist"
 
@@ -247,10 +246,9 @@ class FileOpObj(object):
     def setParentFid(self, pfid, mdtTarget):
         self.parent_fid = pfid.split('=')[1].strip()
         try:
-            with open(os.devnull, 'w') as nullDev:
-                self.parent_path = subprocess.check_output("lfs fid2path " + mdtTarget + " " + self.parent_fid,
-                                                           shell=True, stderr=nullDev).decode("utf-8").strip()
-        except subprocess.CalledProcessError:
+            self.parent_path = check_output("lfs fid2path --link 1 " + mdtTarget + " " + self.parent_fid,
+                                                       shell=True, stderr=DEVNULL).decode("utf-8").strip()
+        except CalledProcessError:
             # The file has been removed already and the fid is invalid
             self.parent_path = "File Not Exist"
 

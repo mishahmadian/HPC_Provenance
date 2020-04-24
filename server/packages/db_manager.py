@@ -159,7 +159,7 @@ class MongoDB:
                         "ordered": False
                     }
                     result = self._mongoDB.command(update_command, check=True)
-                    print(str(result))
+
                 # Otherwise, update using the collection update command
                 else:
                     # Update the Data

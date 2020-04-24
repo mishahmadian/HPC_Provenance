@@ -17,11 +17,10 @@ from collections import defaultdict
 from db_operations import MongoOPs
 from file_op_logs import FileOpObj
 from bisect import bisect_left
-from tabulate import tabulate
 from typing import List, Dict
 from logger import log, Mode
 import subprocess
-import time, os
+import time
 
 #------ Global Variable ------
 # Timer Value
@@ -314,69 +313,7 @@ class Aggregator(Process):
                     provenanceTbl.pop(uniq_id)
                     continue
             # Otherwise, just reset the Provenance Object items
-            provenObj = provenanceTbl.get(uniq_id)
-            provenObj.reset()
-            provenanceTbl[uniq_id] = provenObj
             provenanceTbl._callmethod('__getitem__', (uniq_id,)).reset()
-
-
-
-    @staticmethod
-    def _tableView(provenanceTbl : 'DictProxy') -> None:
-        provDict = provenanceTbl._getvalue()
-        ptable = []
-        jobAttrs = []
-        mdsAttrs = []
-        ossAttrs = []
-        fopAttrs = []
-
-        # find last object
-        provenObj = None
-        for obj in provDict.values():
-            if provenObj is None:
-                provenObj = obj
-                continue
-
-            if obj.jobInfo.jobid and provenObj.jobInfo.jobid:
-                if int(obj.jobInfo.jobid) > int(provenObj.jobInfo.jobid):
-                    provenObj = obj
-
-        jobInfo = provenObj.jobInfo
-        mdsObj = provenObj.MDSDataObj_lst[-1] if provenObj.MDSDataObj_lst else None
-        ossobj = provenObj.OSSDataObj_lst[-1] if provenObj.OSSDataObj_lst else None
-        fopObj = provenObj.FileOpObj_lst[-1] if provenObj.FileOpObj_lst else None
-
-        if jobInfo:
-            jobAttrs = [atr for atr in dir(jobInfo) if (not atr.startswith('__')) and (not callable(getattr(jobInfo, atr)))]
-
-        if mdsObj:
-            mdsAttrs = [atr for atr in dir(mdsObj) if (not atr.startswith('__')) and (not callable(getattr(mdsObj, atr)))]
-
-        if ossobj:
-            ossAttrs = [atr for atr in dir(ossobj) if (not atr.startswith('__')) and (not callable(getattr(ossobj, atr)))]
-
-        if fopObj:
-            fopAttrs = [atr for atr in dir(fopObj) if (not atr.startswith('__')) and (not callable(getattr(fopObj, atr)))]
-
-        # find largest list
-        maxAttsLen = max([len(jobAttrs), len(mdsAttrs), len(ossAttrs), len(fopAttrs)])
-        allAttrObjs = [jobAttrs, mdsAttrs, ossAttrs, fopAttrs]
-        allObjs = [jobInfo, mdsObj, ossobj, fopObj]
-        # Create pTable
-        for inx in range(maxAttsLen):
-            record = []
-            in_inx = 0
-            for objAttrs in allAttrObjs:
-                if inx < len(objAttrs):
-                    record.extend([objAttrs[inx], str(getattr(allObjs[in_inx], objAttrs[inx])), "*"])
-                else:
-                    record.extend(["", "", "*"])
-                in_inx += 1
-            ptable.append(record[:-1])
-
-        os.system("reset && printf '\e[3J'")
-        print(tabulate(ptable, headers=["Job Info:", "Value:", "*", "MDS:", "Value:", "*", "OSS:", "Value:", "*",
-                                        "File OP:", "Value:"], tablefmt="fancy_grid"))
 
 
     # Timer function to be used in a thread inside this process
