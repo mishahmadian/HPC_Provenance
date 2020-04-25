@@ -25,7 +25,7 @@ class SchedMain:
             signal.signal(signal.SIGINT, self.agent_exit)
             signal.signal(signal.SIGTERM, self.agent_exit)
 
-            self._cleanup_RPC_que()
+            #self._cleanup_RPC_que()
 
         except ConfigReadExcetion as confExp:
             log(Mode.MAIN_SCHED, confExp.getMessage())

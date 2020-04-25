@@ -9,22 +9,26 @@
 """
 from multiprocessing import Process, Queue, Event
 from communication import ServerConnection
+from signal import signal, SIGINT
 from config import ServerConfig
 #from scheduler import UGEJobInfo
 import json, urllib.request
 from typing import List
 import scheduler
+import os
 #
 # This class communicates with UGERestful API in order to collect required information
 class UGE:
-    def __init__(self):
+    def __init__(self, shutdown : Event):
         self.config = ServerConfig()
         # RPC Request dict: {cluster1 : [list of jobIds 1], cluster2 : [list of jobIds 2], ...}
         self.ugeAcctJobIdReq_Q = Queue()
         # RPC Response dict: {cluster1 : [list of jobInfo 1], cluster2 : [list of jobInfo 2], ...}
         self.ugeAcctJobInfoRes_Q = Queue()
         # Process Event control
-        self.__event = Event()
+        self.timeout = Event()
+        # Shutdown Event
+        self.shutdown = shutdown
         # Start the UGE Accounting RPC process if [uge] section is defined in server.conf
         self._ugeAcctProc: Process = Process(target=self.__UGE_Accounting_Service,
                                              args=(self.ugeAcctJobIdReq_Q, self.ugeAcctJobInfoRes_Q,))
@@ -99,10 +103,14 @@ class UGE:
 
                 # Return generated JobInfo Object
                 return jobInfo
-# #
-# # This Class communicates with UGE q_master node and tries to collect Accounting data when job is already finished
-# #
-# class UGEAccounting:
+
+    #
+    # Close the scheduler by terminating the internal process
+    #
+    # def close(self):
+    #     if self._ugeAcctProc:
+    #         self._ugeAcctProc.terminate()
+
 
     @staticmethod
     def __getUGEAcctJobInfo(cluster, job_task_id_lst : List[str]) -> List['scheduler.UGEJobInfo']:
@@ -178,7 +186,7 @@ class UGE:
     def __UGE_Accounting_Service(self, acctJobIdReq_Q : Queue, acctJobInfoRes_Q : Queue):
         # Get the waiting time
         wait_Intv = self.config.getUGEAcctRPCIntv()
-        while not self.__event.is_set():
+        while not (self.timeout.is_set() or self.shutdown.is_set()):
             job_req_list = []
             # get all job_ids in one snapshot
             while acctJobIdReq_Q.qsize():
@@ -203,7 +211,10 @@ class UGE:
                     acctJobInfoRes_Q.put(jobInfo)
 
             # Wait the amount of time that is defined under [uge] section
-            self.__event.wait(wait_Intv)
+            try:
+                self.timeout.wait(wait_Intv)
+            except:
+                pass
 
 #
 # In any case of Error, Exception, or Mistake UGEServiceException will be raised

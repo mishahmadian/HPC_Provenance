@@ -19,6 +19,7 @@ from file_op_logs import FileOpObj
 from bisect import bisect_left
 from typing import List, Dict
 from logger import log, Mode
+from uge_service import UGE
 import subprocess
 import time
 
@@ -31,13 +32,14 @@ class Aggregator(Process):
     Aggregate all MDS, OSS and File Operation data collected from different targets
     and store them into various databases.
     """
-    def __init__(self, MSDStat_Q, OSSStat_Q, fileOP_Q):
+    def __init__(self, MSDStat_Q, OSSStat_Q, fileOP_Q, shutdown: Event):
         Process.__init__(self)
         self.MSDStat_Q = MSDStat_Q
         self.OSSStat_Q = OSSStat_Q
         self.fileOP_Q = fileOP_Q
         self.jobInfo_Q = Queue()
         self.event_flag = Event()
+        self.shutdown = shutdown
         self.timesUp = Event()
         self.currentTime = 0
         self.config = ServerConfig()
@@ -46,15 +48,10 @@ class Aggregator(Process):
             self._timerIntv = self.config.getAggrTimer()
             self._mdtTargets = self.config.getMdtTargets()
             self._chLogUsers = self.config.getChLogsUsers()
-
-            self._jobScheduler = JobScheduler()
+            self._uge_clusters = self.config.getUGE_clusters()
 
         except ConfigReadExcetion as confExp:
             log(Mode.AGGREGATOR, confExp.getMessage())
-            self.event_flag.set()
-
-        except JobSchedulerException as jobSchedExp:
-            log(Mode.AGGREGATOR, jobSchedExp.getMessage())
             self.event_flag.set()
 
 
@@ -67,6 +64,12 @@ class Aggregator(Process):
         provenanceObjManager.start()
 
         try:
+            ugeService = None
+            # If UGE scheduler is defined then use it for scheduler
+            if self._uge_clusters:
+                ugeService = UGE(self.shutdown)
+            # Create an instance of the scheduler
+            jobScheduler = JobScheduler(UGE=ugeService)
             # Create a Timer Thread to be running for this process and change the
             # "timer_val" value every
             timer_flag = Event_Thr()
@@ -78,7 +81,7 @@ class Aggregator(Process):
             # This object will be created once only when aggregator process starts running
             provenanceTbl = Manager().dict()
 
-            while not self.event_flag.is_set():
+            while not (self.event_flag.is_set() or self.shutdown.is_set()):
                 # Record the current timestamp
                 self.currentTime = time.time()
                 # a list of Processes
@@ -101,7 +104,7 @@ class Aggregator(Process):
                                                                             aggregatorLock, self.fileOP_Q,
                                                                             self.jobInfo_Q,)))
                 # Aggregate Job Info(s) from Job Scheduler(s)
-                procList.append(Process(target=self._aggregateJobs, args=(self._jobScheduler, provenanceTbl,
+                procList.append(Process(target=self._aggregateJobs, args=(jobScheduler, provenanceTbl,
                                                                           self.jobInfo_Q, provenanceObjManager,
                                                                             aggregatorLock,)))
 
@@ -110,7 +113,7 @@ class Aggregator(Process):
                     proc.daemon = True
                     proc.start()
 
-                # Keep the time interval
+                # Go in the waiting mode
                 self.event_flag.wait(self._interval)
                 # stop the processes for this interval
                 self.timesUp.set()
@@ -143,6 +146,11 @@ class Aggregator(Process):
 
             # Terminate timer after flag is set
             timer_flag.set()
+            # jobScheduler.close()
+
+        except JobSchedulerException as jobSchedExp:
+            log(Mode.AGGREGATOR, jobSchedExp.getMessage())
+            self.event_flag.set()
 
         except ProvenanceExitExp:
             pass
@@ -229,41 +237,46 @@ class Aggregator(Process):
         # Get the JobInfo for each jobid only once in each round
         processed_jobids = set()
         # Fill the provenanceTbl dictionary up until the interval time is up
-        while not self.timesUp.is_set():
-            # Give it a second then check the jobInfo_Q again
-            self.timesUp.wait(1)
-            # check all the items in the queue while time is not up for this round
-            while not jobInfo_Q.empty() and not self.timesUp.is_set():
-                # Get aj JobInfo Request
-                job_req = jobInfo_Q.get()
+        try:
+            while not self.timesUp.is_set():
+                # Give it a second then check the jobInfo_Q again
+                self.timesUp.wait(1)
+                # check all the items in the queue while time is not up for this round
+                while not jobInfo_Q.empty() and not self.timesUp.is_set():
+                    # Get aj JobInfo Request
+                    job_req = jobInfo_Q.get()
 
-                # Do not get the JobInfo if it's already processed
-                if job_req in processed_jobids:
-                    continue
+                    # Do not get the JobInfo if it's already processed
+                    if job_req in processed_jobids:
+                        continue
 
-                # Unpack the job_req
-                cluster, sched, jobid = job_req.split('_')
-                taskid = None
-                if '.' in jobid:
-                    jobid, taskid = jobid.split('.')
+                    # Unpack the job_req
+                    cluster, sched, jobid = job_req.split('_')
+                    taskid = None
+                    if '.' in jobid:
+                        jobid, taskid = jobid.split('.')
 
-                # Get Job Info from Job Scheduler
-                jobInfo : JobInfo = jobScheduler.getJobInfo(cluster, sched, jobid, taskid)
-                # Get the  JobInfo Unique ID
-                uniq_id = jobInfo.uniqID()
+                    # Get Job Info from Job Scheduler
+                    jobInfo : JobInfo = jobScheduler.getJobInfo(cluster, sched, jobid, taskid)
+                    # Get the  JobInfo Unique ID
+                    uniq_id = jobInfo.uniqID()
 
-                # If received a JobInfo that its uniq_id is not present in Provenance Table then ignore it
-                if not provenanceTbl.get(uniq_id):
-                    continue
-                # Update the JobInfo for this record in the Provenance Table
-                provenanceTbl._callmethod('__getitem__', (uniq_id,)).updateJobInfo(jobInfo)
-                # Check on this job again in next round if the status is not FINISHED yet
-                if jobInfo.status is not JobInfo.Status.FINISHED:
-                    processed_jobids.add(job_req)
+                    # If received a JobInfo that its uniq_id is not present in Provenance Table then ignore it
+                    if not provenanceTbl.get(uniq_id):
+                        continue
+                    # Update the JobInfo for this record in the Provenance Table
+                    provenanceTbl._callmethod('__getitem__', (uniq_id,)).updateJobInfo(jobInfo)
+                    # Check on this job again in next round if the status is not FINISHED yet
+                    if jobInfo.status is not JobInfo.Status.FINISHED:
+                        processed_jobids.add(job_req)
 
-        # Once the time's up, put back all the processed JobIDs back into the queue for next round
-        while processed_jobids:
-            jobInfo_Q.put(processed_jobids.pop())
+            # Once the time's up, put back all the processed JobIDs back into the queue for next round
+            while processed_jobids:
+                jobInfo_Q.put(processed_jobids.pop())
+
+        except ProvenanceExitExp:
+            pass
+
 
     #
     # Clear the ChangeLogs

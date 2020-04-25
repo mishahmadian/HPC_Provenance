@@ -13,33 +13,33 @@
 from file_io_stats import IOStatsListener, IOStatsException
 from aggregator import Aggregator, AggregatorException
 from db_manager import MongoDB, DBManagerException
+from multiprocessing import Process, Queue, Event
 from file_op_logs import ChangeLogCollector
 from communication import CommunicationExp
 from exceptions import ProvenanceExitExp
 from config import ConfigReadExcetion
 from persistant import FinishedJobs
-from multiprocessing import Queue
 from logger import log, Mode
-from time import sleep
+from time import sleep, time
+from typing import List
 import signal
+import os
 
 #
 # The main class which is executed by the main Daemon process
 #
 class Main_Interface:
     def __init__(self):
-        self.IOStatsLsn_Proc = None
-        self.fileOPStats_Proc = None
-        self.aggregator_Proc = None
-        self.count = 0
-
+        self._processlist : List[Process] = []
         self.MSDStat_Q = Queue()
         self.OSSStat_Q = Queue()
         self.fileOP_Q = Queue()
+        self.shut_down = Event()
 
         # Register signal handler
         signal.signal(signal.SIGINT, self.server_exit)
         signal.signal(signal.SIGTERM, self.server_exit)
+        signal.signal(signal.SIGHUP, self.server_exit)
 
     # Handle the SIGINT and SIGTERM signals in order to shutdown the server
     def server_exit(self, sig, frame):
@@ -48,58 +48,83 @@ class Main_Interface:
     # Main Function
     def run_server(self):
         try:
-            log(Mode.APP_START, "***************** Provenance Server Started *****************")
             #
             # Prepare Databases
             mongoDB = MongoDB()
             mongoDB.init()
             mongoDB.close()
+
             # Initialize FinishedJobs File
             finJobsDB = FinishedJobs()
             finJobsDB.init()
+
             # IO Stats Listener Process
-            self.IOStatsLsn_Proc = IOStatsListener(self.MSDStat_Q, self.OSSStat_Q)
-            #self.IOStatsLsn_Proc.daemon = True
-            self.IOStatsLsn_Proc.start()
-            #self.IOStatsLsn_Proc.join()
+            IOStatsLsn_Proc = IOStatsListener(self.MSDStat_Q, self.OSSStat_Q, self.shut_down)
+            self._processlist.append(IOStatsLsn_Proc)
 
             # File Operation Log collector Process
-            self.fileOPStats_Proc = ChangeLogCollector(self.fileOP_Q)
-            self.fileOPStats_Proc.start()
+            fileOPStats_Proc = ChangeLogCollector(self.fileOP_Q, self.shut_down)
+            self._processlist.append(fileOPStats_Proc)
 
             # Aggregator Process
-            self.aggregator_Proc = Aggregator(self.MSDStat_Q, self.OSSStat_Q, self.fileOP_Q)
-            self.aggregator_Proc.start()
-            #self.aggregator_Proc.join()
+            aggregator_Proc = Aggregator(self.MSDStat_Q, self.OSSStat_Q, self.fileOP_Q, self.shut_down)
+            self._processlist.append(aggregator_Proc)
 
+            # Start all Modules
+            for proc in self._processlist:
+                proc.start()
+
+            print(str(os.getpid()))
+
+            log(Mode.APP_START, "***************** Provenance Server Started *****************")
+
+            # keep the main process alive ans keep monitoring the Modules
             while True:
+                # Periodically check on processes and make sure they're running fine,
+                # otherwise kill the server process
+                if not all(process.is_alive() for process in self._processlist):
+                    log(Mode.MAIN, "[Process Dead] One or may module process has been terminated")
+                    raise ProvenanceExitExp
                 sleep(0.5)
-                if not self.fileOPStats_Proc.is_alive():
-                    log(Mode.MAIN, "[Process Dead] The file_op_logs process has been terminated")
-                    raise ProvenanceExitExp
-                if not self.IOStatsLsn_Proc.is_alive():
-                    log(Mode.MAIN, "[Process Dead] The file_op_stats process has been terminated")
-                    raise ProvenanceExitExp
-                if not self.aggregator_Proc.is_alive():
-                    log(Mode.MAIN, "[Process Dead] The Aggregator process has been terminated")
-                    raise ProvenanceExitExp
 
         except ProvenanceExitExp:
+            # Shutdown timeout
+            timeout = 10
+            start_time = time()
+            # Signal all the processes to shutdown
+            self.shut_down.set()
+            print(f"Provenance Server is shutting down ", end='', flush=True)
+            # Allow all process for a few seconds to finish
+            while time() - start_time <= timeout:
+                print(".", end='', flush=True)
+                if not any(process.is_alive() for process in self._processlist):
+                    # All the processes are finished
+                    break
+                sleep(1)
+            else:
+                # If time is out and still a process is not terminated, then kill it
+                for process in self._processlist:
+                    if process.is_alive():
+                        process.terminate()
+                        process.join()
+
+            print(" Done.")
+
             log(Mode.APP_EXIT, "***************** Provenance Server Stopped *****************")
-            if not self.IOStatsLsn_Proc is None:
-                self.IOStatsLsn_Proc.terminate()
-                # self.IOStatsLsn_Proc.join()
-
-            if not self.fileOPStats_Proc is None:
-                self.fileOP_Q.close()
-                self.fileOP_Q.join_thread()
-                self.fileOPStats_Proc.terminate()
-                self.fileOPStats_Proc.join()
-
-            if not self.aggregator_Proc is None:
-                # self.aggregator_Proc.terminate()
-                self.aggregator_Proc.event_flag.set()
-                self.aggregator_Proc.join()
+            # if not self.IOStatsLsn_Proc is None:
+            #     self.IOStatsLsn_Proc.terminate()
+            #     # self.IOStatsLsn_Proc.join()
+            #
+            # if not self.fileOPStats_Proc is None:
+            #     self.fileOP_Q.close()
+            #     self.fileOP_Q.join_thread()
+            #     self.fileOPStats_Proc.terminate()
+            #     self.fileOPStats_Proc.join()
+            #
+            # if not self.aggregator_Proc is None:
+            #     # self.aggregator_Proc.terminate()
+            #     self.aggregator_Proc.event_flag.set()
+            #     self.aggregator_Proc.join()
 
         except ConfigReadExcetion as confExp:
             log(Mode.MAIN, confExp.getMessage())

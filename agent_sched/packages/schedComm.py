@@ -42,6 +42,8 @@ class SchedConnection:
         if is_rpc:
             # Prepare the channel for RPC Requests
             self.__channel.queue_declare(queue=self.__rpc_queue)
+            # Purge all the messages in this queue to avoid any process freeze
+            self.__channel.queue_purge(queue=self.__rpc_queue)
 
 
     # Establish a Connection to RabbitMQ server

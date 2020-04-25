@@ -48,10 +48,11 @@ class MongoDB:
             - Create specific Indexes for collections
         :return:
         """
+        # Get all available collections of this database
+        allcolls = self._mongoDB.collection_names()
+        # Create Index for those collection which are not created yet
         for collection in self.Collections:
-            # Get all available collections of this database
-            allcolls = self._mongoDB.collection_names()
-            # If JobInfo is not created yet
+            # If Collection is not created yet
             if not collection.value in allcolls:
                 coll = self._mongoDB[collection.value]
 
@@ -63,7 +64,27 @@ class MongoDB:
                     # Add/Create indexes
                     coll.create_indexes([uid_uniq_inx])
 
-                ##elif collection.value == "":
+                # Create Index for MDS DB
+                elif collection.value == 'mds_stats':
+                    # Index the uid only
+                    mds_uid_inx = IndexModel([("uid", TEXT)], name="mds_uid_inx")
+                    # Add/Create Index
+                    coll.create_indexes([mds_uid_inx])
+
+                # Create Index for OSS DB
+                elif collection.value == 'oss_stats':
+                    # Index the uid only
+                    oss_uid_inx = IndexModel([("uid", TEXT)], name="oss_uid_inx")
+                    # Add/Create Index
+                    coll.create_indexes([oss_uid_inx])
+
+                # Create Index for FileOP DB
+                elif collection.value == 'file_op':
+                    # Index the uid only
+                    fileop_uid_inx = IndexModel([("uid", TEXT)], name="fileop_uid_inx")
+                    # Add/Create Index
+                    coll.create_indexes([fileop_uid_inx])
+
                 else:
                     continue
 

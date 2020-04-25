@@ -15,8 +15,9 @@ import uge_service
 import hashlib
 
 class JobScheduler:
-    def __init__(self):
+    def __init__(self, UGE=None):
         self.config = ServerConfig()
+        self.__ugeService = UGE
         # list of all supported schedulers
         self.__schedulers = {
             'uge' : self.__get_UGE_JobInfo
@@ -25,13 +26,13 @@ class JobScheduler:
         # -------------------------------------------------------------------------------------
         # Following section executes when [uge] section appears in server.conf
         #
-        self.__ugeService = None
-        try:
-            if self.config.getUGE_clusters():
-                self.__ugeService = uge_service.UGE()
-
-        except ConfigReadExcetion as confExp:
-            log(Mode.SCHEDULER, confExp.getMessage())
+        # self.__ugeService = None
+        # try:
+        #     if self.config.getUGE_clusters():
+        #         self.__ugeService = uge_service.UGE()
+        #
+        # except ConfigReadExcetion as confExp:
+        #     log(Mode.SCHEDULER, confExp.getMessage())
         # -------------------------------------------------------------------------------------
     #
     # The main method that gets the jobInfo object regardless of scheduler type and the type of job

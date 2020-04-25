@@ -20,7 +20,6 @@ from typing import List
 from math import ceil
 import hashlib
 import ctypes
-import os
 #
 # Lustre Change Logs Process
 #
@@ -29,10 +28,11 @@ class ChangeLogCollector(Process):
     This Class defines a new process to collect Lustre changelog data from
     Lustre client. The changelog has to be registered on MGS server.
     """
-    def __init__(self, fileOP_Q: Queue):
+    def __init__(self, fileOP_Q: Queue, shut_down: Event):
         Process.__init__(self)
         self.fileOP_Q = fileOP_Q
         self.event_flag = Event()
+        self._shutdown = shut_down
         self.config = ServerConfig()
         try:
             self._mdtTargets = self.config.getMdtTargets()
@@ -54,7 +54,7 @@ class ChangeLogCollector(Process):
         # Pool of processes that parse the ChangeLogs
         pool = None
         try:
-            while not self.event_flag.is_set():
+            while not (self.event_flag.is_set() or self._shutdown.is_set()):
 
                 for inx, mdtTarget in enumerate(self._mdtTargets):
                     # Create a list of FileOpObj objects
@@ -105,7 +105,7 @@ class ChangeLogCollector(Process):
             pass
 
         finally:
-            if not pool is None:
+            if pool:
                 pool.terminate()
                 pool.join()
 

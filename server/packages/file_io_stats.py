@@ -11,7 +11,7 @@
 """
 from communication import ServerConnection, CommunicationExp
 from config import ServerConfig, ConfigReadExcetion
-from multiprocessing import Process, Queue
+from multiprocessing import Process, Queue, Event
 from exceptions import ProvenanceExitExp
 from persistant import FinishedJobs
 from typing import Dict, List, Set
@@ -26,12 +26,13 @@ import json
 # into two queues (MSDStat_Q & OSSStat_Q)
 #
 class IOStatsListener(Process):
-    def __init__(self, MSDStat_Q: Queue, OSSStat_Q: Queue):
+    def __init__(self, MSDStat_Q: Queue, OSSStat_Q: Queue, stop_flag: Event):
         Process.__init__(self)
         self.MSDStat_Q = MSDStat_Q
         self.OSSStat_Q = OSSStat_Q
         self.finishedJobs = FinishedJobs()
         self.config = ServerConfig()
+        self._shut_down = stop_flag
         try:
             self.__MDS_hosts = self.config.getMDS_hosts()
             self.__OSS_hosts = self.config.getOSS_hosts()
@@ -60,6 +61,11 @@ class IOStatsListener(Process):
     # This function will be triggered as soon as RabbitMQ receives data from
     # agents on jobStat queue
     def ioStats_receiver(self, ch, method, properties, body):
+        # ---------- Terminate if the stop_flag was set ----------------
+        if self._shut_down.is_set():
+            ch.stop_consuming()
+            return
+
         mdsStatObjLst : List[MDSDataObj] = []
         ossStatObjLst : List[OSSDataObj] = []
         # Get the list of those jobs which are already finished
@@ -93,6 +99,7 @@ class IOStatsListener(Process):
         # Put ossStatObjs into OSSStat_Q
         if ossStatObjLst:
             self.OSSStat_Q.put(ossStatObjLst)
+
 
     # this method finds the finished_Job_IDs that no more exist on Lustre JobStat
     def __refine_finishedJobs(self, server: str, blockedJobs: Set[str], finished_jobIds: Dict):
