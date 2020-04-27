@@ -827,34 +827,7 @@ update_data = [
 # pp = PrettyPrinter(indent=4)
 # pp.pprint(update_q)
 
-from threading import Thread
-from multiprocessing import Process, Event
-import signal
+from multiprocessing import Queue
 
-def mychek(flag):
-    try:
-        while not flag.is_set():
-            print("I'm this thread")
-            flag.wait(5)
-    finally:
-        print("I'm finished")
 
-def exit_this(sig, frame):
-    raise ExitExcpet
 
-class ExitExcpet(Exception):
-    pass
-
-mythr = None
-try:
-    signal.signal(signal.SIGHUP, exit_this)
-    event = Event()
-    mythr = Process(target=mychek, args=(event,))
-    mythr.start()
-    while True:
-        time.sleep(0.5)
-except ExitExcpet as exp:
-    if mythr and mythr.is_alive():
-        print("Terminating process")
-        mythr.terminate()
-        mythr.join()

@@ -1,0 +1,15 @@
+[Unit]
+Description=HPC Provenance Server Service
+After=network.target
+
+[Service]
+Type=forking
+ExecStart=/opt/ohpc/pub/apps/HPC_Provenance/agent_fs/provenance_lustre_daemon.sh start
+ExecReload=/opt/ohpc/pub/apps/HPC_Provenance/agent_fs/provenance_lustre_daemon.sh restart
+ExecStop=/opt/ohpc/pub/apps/HPC_Provenance/agent_fs/provenance_lustre_daemon.sh stop
+
+#StandardOutput=journal+console
+#StandardError=journal+console
+
+[Install]
+WantedBy=multi-user.target

@@ -1,8 +1,8 @@
-#!/usr/bin/python3
+#!/usr/bin/python
 # -*- coding: utf-8 -*-
 """
 |------------------------------------------------------|
-|         UGE Scheduler Data Collectore Agent        |
+|         Luster I/O Statistics Collector Agent        |
 |                     Version 1.0                      |
 |                                                      |
 |       High Performance Computing Center (HPCC)       |
@@ -10,25 +10,25 @@
 |                                                      |
 |       Misha Ahmadian (misha.ahmadian@ttu.edu)        |
 |------------------------------------------------------|
-  This process should be running on the UGE q_master
-  node in order to collect Accounting data for finishe
-  jobs, which cannot be collected through UGERest API
+  This program has to be running on Luster MDT(s) or
+  OSS(s) in order to Collect I/O operations per jobs
+  which are submitted bu user to any type of resource
+  scheduler (i.e PBS, Slurm, UGE/SGE, ...)
 """
-from packages.schedMain import SchedMain
+from io_collector import IO_Collector
 from daemon import DaemonContext, pidfile
-import subprocess
 import signal
 import os
 import sys
 
-scheduler = None
+ioCollector = None
 context = None
-pid_file = '/var/run/provenance_sched.pid'
+pid_file = '/var/run/io_collector.pid'
 #
 # Create a Daemon Context which is going to run the agent
 def start_daemon():
     # Initialize the agent
-    scheduler = SchedMain()
+    ioCollector = IO_Collector()
 
     # Find the PID if the Daemon is running
     pid = None
@@ -40,7 +40,7 @@ def start_daemon():
 
     # Exit if Daemon serice is already running
     if not pid is None:
-        print ("The provenance_sched_service is already running... pid=[%s]" % pid)
+        print ("The agent_service is already running... pid=[%s]" % pid)
         sys.exit(2)
 
     # Ignore all the errors in stderr
@@ -50,15 +50,14 @@ def start_daemon():
     context = DaemonContext(
             working_directory = os.path.dirname(os.path.realpath(__file__)),
             umask = 0o002,
-            pidfile = pidfile.PIDLockFile(pid_file),
-            stderr=stderr
+            pidfile = pidfile.PIDLockFile(pid_file)
         )
 
     # Map the external signals to this Daemon which will eventually
     # capture them and sends them to the agent threads
     context.signal_map = {
-            signal.SIGTERM : scheduler.agent_exit,
-            signal.SIGINT : scheduler.agent_exit,
+            signal.SIGTERM : ioCollector.agent_exit,
+            signal.SIGINT : ioCollector.agent_exit,
         }
 
     # Set UId and GID
@@ -70,15 +69,15 @@ def start_daemon():
 
     # Redirect both STDOUT and STDERR to the system
     context.stdout = sys.stdout
-    context.stderr = sys.stdout
+    context.stderr = open(os.devnull, 'w')
 
     # Start the Daemon
     with context:
-        scheduler.run_sched_service()
+        ioCollector.agent_run()
 
 #
 # Exit the Daemon and Agent gracefully
-def exit_daemon(silent=True):
+def exit_daemon():
     # Find the PID if the Daemon is running
     pid = None
     try:
@@ -89,18 +88,16 @@ def exit_daemon(silent=True):
 
     # check if the service is already stopped
     if pid is None:
-        print("The provenance_sched_service is not running.")
+        print("The agent_service is not running.")
         sys.exit(2)
 
     # Send SIGTERM signal to the Daemon process
     os.kill(pid, signal.SIGTERM)
-    #subprocess.call(f"disown {pid} && kill {pid}", shell=True)
 
 #
 # Reload the Daemon
 def restart_daemon():
-    exit_daemon()
-    start_daemon()
+    pass
 
 #
 # Show the current status
@@ -115,9 +112,9 @@ def daemon_status():
 
     # check if the service is already stopped
     if pid is None:
-        print("The provenance_sched_service is not running.")
+        print("The agent_service is not running.")
     else:
-        print("The provenance_sched_service is running... pid=[%s]" % pid)
+        print("The agent_service is running... pid=[%s]" % pid)
 
 #
 # Main
@@ -126,7 +123,7 @@ if __name__ == "__main__":
 
     # Check the command syntax
     if len(sys.argv) != 2:
-        print("[Missing Argument]:  provenance_sched_agent.py < start | stop | status >")
+        print("[Missing Argument]:  provenance_fs_agent.py < start | stop | status >")
         sys.exit(1)
 
     # Get the requested command
@@ -144,5 +141,5 @@ if __name__ == "__main__":
     try:
         switch[command]()
     except KeyError:
-        print("[Wrong Argument]:  provenance_sched_agent.py < start | stop | status >")
+        print("[Wrong Argument]:  provenance_fs_agent.py < start | stop | status >")
         sys.exit(1)

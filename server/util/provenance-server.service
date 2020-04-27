@@ -1,0 +1,15 @@
+[Unit]
+Description=HPC Provenance Server Service
+After=network.target sgeexecd.service influxdb.service rabbitmq-server.service mongod.service
+
+[Service]
+Type=forking
+ExecStart=/opt/ohpc/pub/apps/HPC_Provenance/server/provenance_daemon.sh start
+ExecReload=/opt/ohpc/pub/apps/HPC_Provenance/server/provenance_daemon.sh restart
+ExecStop=/opt/ohpc/pub/apps/HPC_Provenance/server/provenance_daemon.sh stop
+
+#StandardOutput=journal+console
+#StandardError=journal+console
+
+[Install]
+WantedBy=multi-user.target

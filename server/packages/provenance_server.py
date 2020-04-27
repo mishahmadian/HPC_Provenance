@@ -1,8 +1,8 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 # -*- coding: utf-8 -*-
 """
 |------------------------------------------------------|
-|         Luster I/O Statistics Collector Agent        |
+|            HPC Provenance Server Service             |
 |                     Version 1.0                      |
 |                                                      |
 |       High Performance Computing Center (HPCC)       |
@@ -10,26 +10,31 @@
 |                                                      |
 |       Misha Ahmadian (misha.ahmadian@ttu.edu)        |
 |------------------------------------------------------|
-  This program has to be running on Luster MDT(s) or
-  OSS(s) in order to Collect I/O operations per jobs
-  which are submitted bu user to any type of resource
-  scheduler (i.e PBS, Slurm, UGE/SGE, ...)
+  The Main Provenance Server Daemon that runs on the
+  Monitoring Server machine. This service runs the
+  following modules:
+    - Communication Service
+    - Lustre I/O Stats Modules
+    - Lustre ChangeLog Module
+    - Aggregator Module
+    - Database Service
+    - RESTful API
 """
-from packages.io_collector import IO_Collector
+from main_interface import Main_Interface
 from daemon import DaemonContext, pidfile
 import signal
 import time
 import os
 import sys
 
-ioCollector = None
+scheduler = None
 context = None
-pid_file = '/var/run/io_collector.pid'
+pid_file = '/var/run/provenance_service.pid'
 #
 # Create a Daemon Context which is going to run the agent
 def start_daemon():
     # Initialize the agent
-    ioCollector = IO_Collector()
+    provenance = Main_Interface()
 
     # Find the PID if the Daemon is running
     pid = None
@@ -41,25 +46,25 @@ def start_daemon():
 
     # Exit if Daemon serice is already running
     if not pid is None:
-        print ("The agent_service is already running... pid=[%s]" % pid)
+        print ("The Provenance_Server is already running... pid=[%s]" % pid)
         sys.exit(2)
 
     # Ignore all the errors in stderr
-    stderr = open(os.devnull, 'w')
+    #with open('output', 'w') as devnull:
 
     # Create Daemon Context if it does not exist
     context = DaemonContext(
             working_directory = os.path.dirname(os.path.realpath(__file__)),
             umask = 0o002,
-            pidfile = pidfile.PIDLockFile(pid_file),
-            stderr=stderr
+            pidfile = pidfile.PIDLockFile(pid_file)
         )
 
     # Map the external signals to this Daemon which will eventually
     # capture them and sends them to the agent threads
     context.signal_map = {
-            signal.SIGTERM : ioCollector.agent_exit,
-            signal.SIGINT : ioCollector.agent_exit,
+            signal.SIGTERM : provenance.server_exit,
+            signal.SIGINT : provenance.server_exit,
+            signal.SIGHUP: provenance.server_exit,
         }
 
     # Set UId and GID
@@ -69,13 +74,13 @@ def start_daemon():
     # Detach the process context when opening the daemon context;
     context.detach_process = True
 
-    # Redirect both STDOUT and STDERR to the system
+    # Redirect stdout to STDOUT and stderr to /dev/null
     context.stdout = sys.stdout
-    context.stderr = sys.stdout
+    context.stderr = open(os.devnull, 'w')
 
     # Start the Daemon
     with context:
-        ioCollector.agent_run()
+        provenance.run_server()
 
 #
 # Exit the Daemon and Agent gracefully
@@ -90,16 +95,25 @@ def exit_daemon():
 
     # check if the service is already stopped
     if pid is None:
-        print("The agent_service is not running.")
+        print("The Provenance_Server is not running.")
         sys.exit(2)
 
-    # Send SIGTERM signal to the Daemon process
-    os.kill(pid, signal.SIGTERM)
+    # Send SIGHUP signal to the Daemon process
+    os.kill(pid, signal.SIGHUP)
+
+    # Wait for the process to finish
+    while True:
+        try:
+            os.kill(pid , 0)
+        except OSError:
+            break
+        time.sleep(1)
 
 #
 # Reload the Daemon
 def restart_daemon():
-    pass
+    exit_daemon()
+    start_daemon()
 
 #
 # Show the current status
@@ -114,9 +128,9 @@ def daemon_status():
 
     # check if the service is already stopped
     if pid is None:
-        print("The agent_service is not running.")
+        print("The Provenance_Server is not running.")
     else:
-        print("The agent_service is running... pid=[%s]" % pid)
+        print("The Provenance_Server is running... pid=[%s]" % pid)
 
 #
 # Main
@@ -125,7 +139,7 @@ if __name__ == "__main__":
 
     # Check the command syntax
     if len(sys.argv) != 2:
-        print("[Missing Argument]:  provenance_fs_agent.py < start | stop | status >")
+        print("[Missing Command]:  Provenance_Server.py < start | stop | restart | status >")
         sys.exit(1)
 
     # Get the requested command
@@ -143,5 +157,7 @@ if __name__ == "__main__":
     try:
         switch[command]()
     except KeyError:
-        print("[Wrong Argument]:  provenance_fs_agent.py < start | stop | status >")
+        print("[Wrong Command]:  Provenance_Server.py < start | stop | restart | status >")
         sys.exit(1)
+    except OSError:
+        print("I got it")

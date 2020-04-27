@@ -22,6 +22,7 @@ from logger import log, Mode
 from uge_service import UGE
 import subprocess
 import time
+import os
 
 #------ Global Variable ------
 # Timer Value
@@ -81,7 +82,7 @@ class Aggregator(Process):
             # This object will be created once only when aggregator process starts running
             provenanceTbl = Manager().dict()
 
-            while not (self.event_flag.is_set() or self.shutdown.is_set()):
+            while not any([self.event_flag.is_set(), self.shutdown.is_set()]):
                 # Record the current timestamp
                 self.currentTime = time.time()
                 # a list of Processes
@@ -90,6 +91,7 @@ class Aggregator(Process):
                 aggregatorLock = Lock()
                 # reset the Times Up signal for all process
                 self.timesUp.clear()
+
                 #---------------------- AGGREGATE DATA -------------------------------
                 # Aggregate MDS IO Stats into the Provenance Table
                 procList.append(Process(target=self._aggregateFIO, args=(provenanceTbl, provenanceObjManager,
@@ -113,14 +115,21 @@ class Aggregator(Process):
                     proc.daemon = True
                     proc.start()
 
-                # Go in the waiting mode
-                self.event_flag.wait(self._interval)
+                # Allow Processes to aggregate until time's up or shutdown is called
+                time_keeper = self._interval
+                while all(proc.is_alive() for proc in procList):
+                    time_keeper -= 1
+                    self.event_flag.wait(1)
+                    if time_keeper <= 0:
+                        break
+
                 # stop the processes for this interval
                 self.timesUp.set()
 
                 # wait for all processes to finish
                 for proc in procList:
-                    proc.join()
+                    if proc.is_alive():
+                        proc.join()
 
                 #------------------------- STORE DATA INTO DATABASE ---------------------------
                 # Now dump the data into MonoDB
@@ -175,10 +184,13 @@ class Aggregator(Process):
         :return: None - Store data into a dictionoray of ProvenanceObjs
         """
         try:
-            # Fill the provenanceTbl dictionary up until the interval time is up
-            while not self.timesUp.is_set():
+            # Fill the provenanceTbl dictionary up until the interval time is up or server is shutting down
+            while not any([self.timesUp.is_set(), self.shutdown.is_set()]):
                 # all the MSDStat_Q, OSSStat_Q, and fileOP_Q are assumed as allFS_Q
-                if not allFS_Q.empty():
+                while not allFS_Q.empty():
+                    # Finish the loop if time's up
+                    if self.timesUp.is_set():
+                        break
                     # Get the list of objects from each queue one by one
                     obj_List = allFS_Q.get()
                     # extract objects from obj_List which can be either MDSDataObj, OSSDataObj, or FileOpObj type
@@ -213,7 +225,6 @@ class Aggregator(Process):
                         provenanceTbl._callmethod('__getitem__', (uniq_id,)).insert_sorted(obj_Q)
 
                 # Wait if Queue is empty and check the Queue again
-                #print(provenanceTbl)
                 self.timesUp.wait(1)
 
         except ProvenanceExitExp:
@@ -238,11 +249,15 @@ class Aggregator(Process):
         processed_jobids = set()
         # Fill the provenanceTbl dictionary up until the interval time is up
         try:
-            while not self.timesUp.is_set():
+            while not any([self.timesUp.is_set(), self.shutdown.is_set()]):
                 # Give it a second then check the jobInfo_Q again
                 self.timesUp.wait(1)
-                # check all the items in the queue while time is not up for this round
-                while not jobInfo_Q.empty() and not self.timesUp.is_set():
+                # Process all the jobs in the queue
+                while not jobInfo_Q.empty():
+                    # Finish the loop if time's up
+                    if self.timesUp.is_set():
+                        break
+
                     # Get aj JobInfo Request
                     job_req = jobInfo_Q.get()
 
