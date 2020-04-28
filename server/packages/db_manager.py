@@ -5,6 +5,7 @@
         - MongoDB
         - InfluxDB
         - Neo4j
+ Misha Ahmadian (misha.ahmadian@ttu.edu)
 """
 from pymongo import MongoClient, IndexModel, TEXT, ASCENDING
 from pymongo.errors import PyMongoError, DuplicateKeyError
