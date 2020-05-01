@@ -117,7 +117,7 @@ class MongoOPs:
                         for ost_target, ossObj in ost_tble.items():
                             # Insert/Update per each job running on each OST of each OSS
                             # Create Update query
-                            update_query = {'uid': uid, 'oss_host': oss_host, 'oss_target': ost_target}
+                            update_query = {'uid': uid, 'oss_host': oss_host, 'ost_target': ost_target}
 
                             # Modify the ossObj to gets updated properly
                             ossObj_doc = ossObj.to_dict()

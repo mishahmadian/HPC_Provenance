@@ -6,7 +6,9 @@
  Misha Ahmadian (misha.ahmadian@ttu.edu)
 """
 from api_config import Config, ConfigReadExcetion
+from provenance_jobinfo_api import JobInfo
 from provenance_oss_api import OSSapi
+from provenance_mds_api import MDSapi
 from flask import Flask, jsonify
 from flask_restful import Api
 
@@ -51,7 +53,16 @@ def _Error(message, code=400):
 
 
 if __name__ == '__main__':
+    # RestAPI for OSS data and their JobInfo
     rest_api.add_resource(OSSapi,
                           "/provenance/oss/<string:resource>",
                           "/provenance/oss/<string:resource>/<string:target>")
+    # RestAPI for MDS data and their JobInfo
+    rest_api.add_resource(MDSapi,
+                          "/provenance/mds/<string:resource>",
+                          "/provenance/mds/<string:resource>/<string:target>")
+    # RestAPI for JobInfo data
+    rest_api.add_resource(JobInfo,
+                          "/provenance/jobinfo",
+                          "/provenance/jobinfo/<string:uid>")
     api_app.run(port=5000, host="0.0.0.0", debug=True)

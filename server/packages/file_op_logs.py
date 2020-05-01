@@ -188,8 +188,8 @@ class FileOpObj(object):
         self.timestamp = None
         self.target_fid = None
         self.target_path = None
-        self.uid = None
-        self.gid = None
+        self.userid = None
+        self.groupid = None
         self.nid = None
         self.parent_fid = None
         self.parent_path = None
@@ -238,7 +238,7 @@ class FileOpObj(object):
             self.target_path = "File Not Exist"
 
     def setUserInfo(self, userinfo):
-        self.uid, self.gid = userinfo.strip().split('=')[1].split(':')
+        self.userid, self.groupid = userinfo.strip().split('=')[1].split(':')
 
     def setNid(self, nid):
         self.nid = nid.split('=')[1].strip()

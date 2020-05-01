@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-    The API Class for OSS query requests and responses
+    The API Class for MDS query requests and responses
 
  Misha Ahmadian (misha.ahmadian@ttu.edu)
 """
@@ -10,9 +10,9 @@ from flask_restful import Resource, reqparse
 from api_logger import log, Mode
 import json
 
-class OSSapi(Resource):
+class MDSapi(Resource):
     def __init__(self):
-        super(OSSapi, self).__init__()
+        super(MDSapi, self).__init__()
         config = Config()
         try:
             lustre_schema = config.getSchema()
@@ -23,7 +23,7 @@ class OSSapi(Resource):
             # Get the lustre schema in dictionary format
             schema_dict = json.loads(lustre_schema)
             # Get the OSS part of the schema
-            self.oss_schema = schema_dict.get('oss', None)
+            self.mds_schema = schema_dict.get('mds', None)
 
         except ConfigReadExcetion as confExp:
             log(Mode.OSS_API, confExp.getMessage())
@@ -37,12 +37,12 @@ class OSSapi(Resource):
         :return: JSON
         """
         # Make sure the 'resource' is in the OSS schema
-        if resource not in self.oss_schema.keys():
-            return self._error(f"the OSS ({resource}) does not exist")
+        if resource not in self.mds_schema.keys():
+            return self._error(f"the MDS ({resource}) does not exist")
 
         # Check target to be in the OST list
-        if target and target not in self.oss_schema.get(resource, None):
-            return self._error(f"the OST ({target}) does not belong to ({resource})")
+        if target and target not in self.mds_schema.get(resource, None):
+            return self._error(f"the MDT ({target}) does not belong to ({resource})")
 
         # Get and parse all the arguments
         req_data = self._get_args()
@@ -50,12 +50,22 @@ class OSSapi(Resource):
         db = None
         try:
             db = MongoDB()
-            result = db.query_oss_jobs(resource, target, req_data['uid'], req_data['js'],
-                                       req_data['sort'], req_data['days'])
+            # Get the MDS/Jobs/ and Files that are running on MDS
+            if all([target, req_data['files'], req_data['files'] == "y"]):
+                result = db.query_fileop_mds(target, req_data['uid'], req_data['js'],
+                                             req_data['sort'], req_data['days'])
+            # A target has to be selected
+            elif target and req_data['files']:
+                return self._error("Cannot list all the files without selecting a terget MDT")
+            else:
+            # Otherwise, get the MDS and JobInfo Data
+                result = db.query_mds_jobs(resource, target, req_data['uid'], req_data['js'],
+                                           req_data['sort'], req_data['days'])
 
             # Convert Datetime object to epoch
             for rec in result:
-                rec[u"modified_time"] = rec[u"modified_time"].timestamp()
+                if rec.get(u"modified_time", None):
+                    rec[u"modified_time"] = rec[u"modified_time"].timestamp()
 
             if result:
                 return {"result": result}, 200
@@ -76,6 +86,7 @@ class OSSapi(Resource):
         :return:
         """
         parser = reqparse.RequestParser()
+        parser.add_argument('files', type=str, required=False)
         parser.add_argument('uid', type=str, required=False)
         parser.add_argument('js', type=str, required=False)
         parser.add_argument('sort', type=str, required=False)
@@ -91,6 +102,6 @@ class OSSapi(Resource):
         :return: (dict, int)
         """
         return {
-            "message" : message,
-            "code" : code
-        }, code
+                   "message": message,
+                   "code": code
+               }, code
