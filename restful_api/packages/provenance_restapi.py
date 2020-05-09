@@ -11,6 +11,7 @@ from provenance_oss_api import OSSapi
 from provenance_mds_api import MDSapi
 from flask import Flask, jsonify
 from flask_restful import Api
+import json
 
 
 # Create an API app
@@ -35,6 +36,8 @@ def schema():
 
     if not lustre_schema:
         return jsonify(_Error("couldn't find the Lustre Servers Schema"))
+    else:
+        lustre_schema = json.loads(lustre_schema)
 
     return jsonify({'schema' : lustre_schema})
 

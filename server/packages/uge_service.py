@@ -9,13 +9,11 @@
 """
 from multiprocessing import Process, Queue, Event
 from communication import ServerConnection
-from signal import signal, SIGINT
 from config import ServerConfig
 #from scheduler import UGEJobInfo
 import json, urllib.request
 from typing import List
 import scheduler
-import os
 #
 # This class communicates with UGERestful API in order to collect required information
 class UGE:

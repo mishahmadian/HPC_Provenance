@@ -381,6 +381,7 @@ class MongoDB:
             "end_time" : 1.0,
             "modified_time" : 1.0,
             "num_cpu" : 1.0,
+            "h_vmem" : 1.0,
             "parallelEnv" : 1.0,
             "project" : 1.0,
             "queue" : 1.0,
@@ -424,19 +425,22 @@ class MongoDB:
                 u"pipeline": [
                     { u"$match": {
                             u"$expr": {
-                                u"$eq": [  u"$uid", u"$$j_uid" ]
+                                u"$eq": [ u"$uid", u"$$j_uid" ]
                             }
                         }
                     },
                     { u"$lookup": {
                             u"from": u"file_op",
-                            u"let": { u"mds_uid": u"$uid", u"mdt": u"$mdt_target" },
+                            u"let": {
+                                u"mds_uid": u"$uid",
+                                u"mdt": u"$mdt_target"
+                            },
                             u"pipeline": [
                                 { u"$match": {
                                         u"$expr": {
                                             u"$and": [
                                                 { u"$eq": [ u"$uid", u"$$mds_uid" ] },
-                                                { u"$eq": [ u"$mdtTarget", u"$$mdt" ]  }
+                                                { u"$eq": [ u"$mdtTarget", u"$$mdt" ] }
                                             ]
                                         }
                                     }
@@ -451,6 +455,10 @@ class MongoDB:
                                         u"target_file": 1.0,
                                         u"target_path": 1.0,
                                         u"timestamp": 1.0
+                                    }
+                                },
+                                { u"$sort": {
+                                        u"timestamp": -1.0
                                     }
                                 }
                             ],
@@ -475,6 +483,11 @@ class MongoDB:
                             u"unlink": 1.0,
                             u"file_op": 1.0
                         }
+                    },
+                    { u"$sort": {
+                            u"mds_host": 1.0,
+                            u"mdt_target": 1.0
+                        }
                     }
                 ],
                 u"as": u"mds_data"
@@ -484,9 +497,37 @@ class MongoDB:
         join_oss = {
             u"$lookup": {
                 u"from": u"oss_stats",
-                u"localField": u"uid",
-                u"foreignField": u"uid",
-                u"as": u"oss"
+                u"let": {
+                    u"j_uid": u"$uid"
+                },
+                u"pipeline": [
+                    {u"$match": {
+                            u"$expr": {
+                                u"$eq": [ u"$uid", u"$$j_uid" ]
+                            }
+                        }
+                    },
+                    { u"$project": {
+                        u"_id": 0.0,
+                        u"oss_host": 1.0,
+                        u"ost_target": 1.0,
+                        u"read_bytes": 1.0,
+                        u"read_bytes_max": 1.0,
+                        u"read_bytes_min": 1.0,
+                        u"read_bytes_sum": 1.0,
+                        u"write_bytes": 1.0,
+                        u"write_bytes_max": 1.0,
+                        u"write_bytes_min": 1.0,
+                        u"write_bytes_sum": 1.0
+                        }
+                    },
+                    { u"$sort": {
+                            u"oss_host": 1.0,
+                            u"ost_target": 1.0
+                        }
+                    }
+                ],
+                u"as": u"oss_data"
             }
         }
 
@@ -515,17 +556,7 @@ class MongoDB:
                 u"jobName": 1.0,
                 u"pwd": 1.0,
                 u"username": 1.0,
-                u"oss.oss_host": 1.0,
-                u"oss.ost_target": 1.0,
-                u"oss.read_bytes": 1.0,
-                u"oss.read_bytes_max": 1.0,
-                u"oss.read_bytes_min": 1.0,
-                u"oss.read_bytes_sum": 1.0,
-                u"oss.write_bytes": 1.0,
-                u"oss.write_bytes_max": 1.0,
-                u"oss.write_bytes_min": 1.0,
-                u"oss.write_bytes_sum": 1.0,
-                u"oss.modified_time": 1.0,
+                u"oss_data": 1.0,
                 u"mds_data": 1.0
             }
         }
@@ -534,7 +565,7 @@ class MongoDB:
         pipeline = [jobInfo_query, join_mds_fileop, join_oss, projection]
 
         # Selects the collection of this database
-        coll = self._mongoDB[self.Collections.MDS_STATS_COLL.value]
+        coll = self._mongoDB[self.Collections.JOB_INFO_COLL.value]
         # Perform the Query
         cursor = coll.aggregate(pipeline, allowDiskUse=False)
 
