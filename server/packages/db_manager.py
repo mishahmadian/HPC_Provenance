@@ -7,13 +7,19 @@
         - Neo4j
  Misha Ahmadian (misha.ahmadian@ttu.edu)
 """
+from influxdb.exceptions import InfluxDBClientError, InfluxDBServerError
 from pymongo import MongoClient, IndexModel, TEXT, ASCENDING
 from pymongo.errors import PyMongoError, DuplicateKeyError
 from config import ServerConfig, ConfigReadExcetion
 from typing import Union, Dict, List
+from influxdb import InfluxDBClient
+from datetime import datetime
 from logger import log, Mode
 from enum import Enum, unique
 
+#------------------------------------
+#          MongoDB
+#------------------------------------
 class MongoDB:
     """
      This class will take care of any interaction with MongoDB server
@@ -91,8 +97,6 @@ class MongoDB:
 
                 # Log the action
                 log(Mode.DB_MANAGER, f"The '{collection.value}' collection was created and Indexed")
-
-
 
 
     #
@@ -277,7 +281,100 @@ class MongoDB:
         OSS_STATS_COLL = 'oss_stats'
         FILE_OP_COLL = 'file_op'
 
+#------------------------------------
+#          InfluxDB
+#------------------------------------
 
+class InfluxDB:
+    """
+     This class will take care of any interaction with InfluxDB server
+     The [influxdb] section in server.conf file should be completed
+    """
+    def __init__(self):
+        try:
+            config = ServerConfig()
+            # Make a connection to InfluxDB
+            self.influxdbClient = InfluxDBClient(
+                host=config.getInfluxdbHost(),
+                port=config.getInfluxdbPort(),
+                username=config.getInfluxdbUser(),
+                password=config.getInfluxdbPass(),
+                database=config.getInfluxdb_DB()
+            )
+
+        except ConfigReadExcetion as confExp:
+            log(Mode.DB_MANAGER, confExp.getMessage())
+
+
+    def insert(self, data_points: List[Dict]) -> bool:
+        """
+         Insert data into InfluxDB Provenance Database
+        :return: None
+        """
+        try:
+            return self.influxdbClient.write_points(data_points)
+
+        except InfluxDBClientError as influxCliExp:
+            raise DBManagerException(f"(close) {str(influxCliExp)}", DBManagerException.DBType.INFLUX_DB)
+
+        except InfluxDBServerError as influxSerExp:
+            raise DBManagerException(f"(close) {str(influxSerExp)}", DBManagerException.DBType.INFLUX_DB)
+
+        except Exception as exp:
+            raise DBManagerException(f"(close) {str(exp)}", DBManagerException.DBType.INFLUX_DB)
+
+
+    def close(self):
+        """
+            Close the connection to InfluxDB
+        """
+        try:
+            self.influxdbClient.close()
+
+        except InfluxDBClientError as influxCliExp:
+            raise DBManagerException(f"(close) {str(influxCliExp)}", DBManagerException.DBType.INFLUX_DB)
+
+        except InfluxDBServerError as influxSerExp:
+            raise DBManagerException(f"(close) {str(influxSerExp)}", DBManagerException.DBType.INFLUX_DB)
+
+        except Exception as exp:
+            raise DBManagerException(f"(close) {str(exp)}", DBManagerException.DBType.INFLUX_DB)
+
+    class InfluxObject(object):
+        """
+            Provides all the necessary fields that creates an InfluxDB point
+            to be inserted in a database
+        """
+        def __init__(self,
+                    measurement: 'InfluxDB.Measurements',
+                    tags: Dict,
+                    fields: Dict,
+                    time: datetime):
+
+            self._measurement = measurement
+            self._tags = tags
+            self._fields = fields
+            self._time = time
+
+
+        def to_dict(self):
+            return {
+                "measurement": self._measurement.value,
+                "tags": self._tags,
+                "fields": self._fields,
+                "time": self._time.strftime('%Y-%m-%dT%H:%M:%SZ')
+            }
+
+
+
+    @unique
+    class Measurements(Enum):
+        """
+            Defines all the avilable Measurements of Provenance Database
+        """
+        OSS_MEAS = 'oss'
+        MDS_MEAS = 'mds'
+        SERVER_STATS_MEAS = "server_stats"
 #
 # In case of error the following exception can be raised
 #
@@ -298,3 +395,4 @@ class DBManagerException(Exception):
         All the supported Databases:
         """
         MONGO_DB = 1
+        INFLUX_DB = 2

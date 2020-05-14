@@ -34,6 +34,7 @@ class Main_Interface:
             self.MSDStat_Q = Queue()
             self.OSSStat_Q = Queue()
             self.fileOP_Q = Queue()
+            self.serverStats_Q = Queue()
             self.shut_down = Event()
 
             # Register signal handler
@@ -62,7 +63,7 @@ class Main_Interface:
             finJobsDB.init()
 
             # IO Stats Listener Process
-            IOStatsLsn_Proc = IOStatsListener(self.MSDStat_Q, self.OSSStat_Q, self.shut_down)
+            IOStatsLsn_Proc = IOStatsListener(self.MSDStat_Q, self.OSSStat_Q, self.serverStats_Q, self.shut_down)
             self._processlist.append(IOStatsLsn_Proc)
 
             # File Operation Log collector Process
@@ -70,7 +71,8 @@ class Main_Interface:
             self._processlist.append(fileOPStats_Proc)
 
             # Aggregator Process
-            aggregator_Proc = Aggregator(self.MSDStat_Q, self.OSSStat_Q, self.fileOP_Q, self.shut_down)
+            aggregator_Proc = Aggregator(self.MSDStat_Q, self.OSSStat_Q, self.fileOP_Q,
+                                         self.serverStats_Q, self.shut_down)
             self._processlist.append(aggregator_Proc)
 
             # Start all Modules

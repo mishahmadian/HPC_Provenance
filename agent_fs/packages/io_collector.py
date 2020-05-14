@@ -25,6 +25,7 @@ import signal
 import socket
 import json
 import time
+import os
 
 #
 #  Defined a Class for collecting JobStats on MDS(s) and OSS(s)
@@ -125,6 +126,8 @@ class PublishIOstats(Thread):
         try:
             self.producer = Producer()
             self. maxJobStatAge = self.config.getMaxJobstatAge()
+            self.cpu_load = self.config.is_CPU_Load_avail()
+            self.mem_usage = self.config.is_Mem_Usage_avail()
         except CommunicationExp as commExp:
             log(Mode.PUBLISHER, commExp.getMessage())
 
@@ -143,6 +146,12 @@ class PublishIOstats(Thread):
                                 "fstarget" : jobstat_msg[0],
                                 "output": jobstat_msg[1]}
 
+                if self.cpu_load:
+                    message_body.update({"serverLoad": self._getServerLoadAvg()})
+
+                if self.mem_usage:
+                    message_body.update({"serverMemory": self._getServerMemoryUsage()})
+
                 # Convert Message body dictionary to JSON format
                 message_json = json.dumps(message_body)
 
@@ -157,6 +166,26 @@ class PublishIOstats(Thread):
             #
             sendingInterval = self.producer.getInterval()
             self.exit_flag.wait(sendingInterval)
+
+    @staticmethod
+    def _getServerLoadAvg():
+        try:
+            return os.getloadavg()
+
+        except OSError:
+            return 0.0, 0.0, 0.0
+
+    @staticmethod
+    def _getServerMemoryUsage():
+        try:
+            out, err = subprocess.Popen(['free', '-t', '-m'], stdout=subprocess.PIPE).communicate()
+            if not err and out:
+                return map(int, out.splitlines()[-1].split()[1:3])
+            else:
+                return [0, 0]
+        except Exception:
+            return [0, 0]
+
 
 
 #

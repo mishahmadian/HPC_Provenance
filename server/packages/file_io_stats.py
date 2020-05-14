@@ -26,8 +26,9 @@ import json
 # into two queues (MSDStat_Q & OSSStat_Q)
 #
 class IOStatsListener(Process):
-    def __init__(self, MSDStat_Q: Queue, OSSStat_Q: Queue, stop_flag: Event):
+    def __init__(self, MSDStat_Q: Queue, OSSStat_Q: Queue, serverStats_Q: Queue, stop_flag: Event):
         Process.__init__(self)
+        self.serverStats_Q = serverStats_Q
         self.MSDStat_Q = MSDStat_Q
         self.OSSStat_Q = OSSStat_Q
         self.finishedJobs = FinishedJobs()
@@ -99,6 +100,12 @@ class IOStatsListener(Process):
         # Put ossStatObjs into OSSStat_Q
         if ossStatObjLst:
             self.OSSStat_Q.put(ossStatObjLst)
+        # Put Server Resource Status in the
+        if io_stat_map.get('serverLoad', None) or io_stat_map.get('serverMemory', None):
+            self.serverStats_Q.put(f"{io_stat_map['server']};"
+                                   f"{io_stat_map['timestamp']};"
+                                   f"{io_stat_map.get('serverLoad', [0.0, 0.0, 0.0])};"
+                                   f"{io_stat_map.get('serverMemory', [0, 0])}")
 
 
     # this method finds the finished_Job_IDs that no more exist on Lustre JobStat

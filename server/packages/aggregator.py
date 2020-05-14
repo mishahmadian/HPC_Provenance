@@ -12,9 +12,9 @@ from multiprocessing import Process, Event, Manager, Lock, Queue
 from config import ServerConfig, ConfigReadExcetion
 from threading import Event as Event_Thr, Thread
 from file_io_stats import MDSDataObj, OSSDataObj
+from db_operations import MongoOPs, InfluxOPs
 from exceptions import ProvenanceExitExp
 from collections import defaultdict
-from db_operations import MongoOPs
 from file_op_logs import FileOpObj
 from bisect import bisect_left
 from typing import List, Dict
@@ -22,7 +22,6 @@ from logger import log, Mode
 from uge_service import UGE
 import subprocess
 import time
-import os
 
 #------ Global Variable ------
 # Timer Value
@@ -33,8 +32,9 @@ class Aggregator(Process):
     Aggregate all MDS, OSS and File Operation data collected from different targets
     and store them into various databases.
     """
-    def __init__(self, MSDStat_Q, OSSStat_Q, fileOP_Q, shutdown: Event):
+    def __init__(self, MSDStat_Q, OSSStat_Q, fileOP_Q, serverStats_Q, shutdown: Event):
         Process.__init__(self)
+        self.serverStats_Q = serverStats_Q
         self.MSDStat_Q = MSDStat_Q
         self.OSSStat_Q = OSSStat_Q
         self.fileOP_Q = fileOP_Q
@@ -134,8 +134,10 @@ class Aggregator(Process):
                 #------------------------- STORE DATA INTO DATABASE ---------------------------
                 # Now dump the data into MonoDB
                 procDBList: List[Process] = [
-                    # Create a separate process for MongoDB
-                    Process(target=MongoOPs.dump2MongoDB, args=(provenanceTbl.copy(),))
+                    # Create a process to dump data into MongoDB
+                    Process(target=MongoOPs.dump2MongoDB, args=(provenanceTbl.copy(),)),
+                    # Create a process to dump time series data into InfluxDB
+                    Process(target=InfluxOPs.dump2InfluxDB, args=(provenanceTbl.copy(), self.serverStats_Q,)),
                 ]
 
                 # Start all DB Process

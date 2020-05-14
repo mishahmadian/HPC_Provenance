@@ -93,6 +93,7 @@ class Mode(Enum):
     COMMUNICATION = auto()
     CONFIG = auto()
     DB_MANAGER = auto()
+    DB_OPERATION = auto()
     FILE_IO_STATS = auto
     FILE_OP_LOGS = auto()
     MAIN = auto()

@@ -42,7 +42,8 @@ class ServerConfig:
                   'changelogs' : ['parallel','interval', 'users'],
                   'aggregator' : ['interval', 'timer_intv'],
                   '*uge' : ['clusters', 'address', 'port', 'acct_interval'],
-                  'mongodb' : ['host', 'port', 'auth_mode', 'username', 'password', 'database']}
+                  'mongodb' : ['host', 'port', 'auth_mode', 'username', 'password', 'database'],
+                  'influxdb' : ['host', 'port', 'username', 'password', 'database']}
         # Iterate over the Sections in config file
         for section in config.keys():
             # all the sections with '*' are optional
@@ -259,6 +260,30 @@ class ServerConfig:
     def getMongoSrcDB(self) -> str:
         return self.__getConfigValue('mongodb', 'database', str)
 
+    # Get the hostname of InfluxDB
+    # Return: String
+    def getInfluxdbHost(self) -> str:
+        return self.__getConfigValue('influxdb', 'host', str)
+
+    # Get the hot port number of InfluxDB
+    # Return: int
+    def getInfluxdbPort(self) -> int:
+        return self.__getConfigValue('influxdb', 'port', int)
+
+    # Get the MongoDB username
+    # Return: String
+    def getInfluxdbUser(self) -> str:
+        return self.__getConfigValue('influxdb', 'username', str)
+
+    # Get the MongoDB password
+    # Return: String
+    def getInfluxdbPass(self) -> str:
+        return self.__getConfigValue('influxdb', 'password', str)
+
+    # Get the MongoDB source database
+    # Return: String
+    def getInfluxdb_DB(self) -> str:
+        return self.__getConfigValue('influxdb', 'database', str)
 
 #
 # In any case of Error, Exception, or Mistake ConfigReadExcetion will be raised

@@ -6,8 +6,9 @@
         - InfluxDB
         - Neo4J
 """
-from db_manager import MongoDB, DBManagerException
+from db_manager import MongoDB, InfluxDB, DBManagerException
 from pymongo.errors import DuplicateKeyError
+from multiprocessing import Queue
 from scheduler import UGEJobInfo
 from datetime import datetime
 from logger import log, Mode
@@ -171,10 +172,167 @@ class MongoOPs:
                 mongodb.insert(MongoDB.Collections.FILE_OP_COLL, fopObj_lst)
 
         except DBManagerException as dbExp:
-            log(Mode.AGGREGATOR, dbExp.getMessage())
+            log(Mode.DB_OPERATION, dbExp.getMessage())
 
         finally:
             # Close the MongoClient
             #print("=== Dumped to MongoDB ===")
             if mongodb:
                 mongodb.close()
+
+
+
+class InfluxOPs:
+    """
+        This class provides methods to store time series data
+        into InfluxDB database
+    """
+    #
+    # Dump to InfluxDB database
+    #
+    @staticmethod
+    def dump2InfluxDB(provenData: Dict[str, 'aggr.ProvenanceObj'], serverStats_Q: Queue):
+        """
+        This method will be called in a different process cuncurrent with other database's operations
+        and Dump time series data into InfluxDB for:
+            - MDS
+            - OSS
+        :param provenData: Dict of ProvenanceObj
+        :param serverStats_Q: A Queue of Server Status Info
+        :return:
+        """
+        influxdb = None
+        try:
+            # Create and instance of InfluxDB Connection
+            influxdb = InfluxDB()
+            # Keep data points in a List
+            data_points = []
+            # Extract MDS and OSS Data from ProvenanceObjectTable
+            for uid, provenObj in provenData.items():
+                #================= MDS =================
+                # Get a table of latest MDS_MDT data objects
+                mdsObj_tbl = provenObj.get_MDS_table()
+                # Update/Insert last collected MDS data
+                if mdsObj_tbl:
+                    # Update/Insert per MDS and MDT
+                    for mds_host, mds in mdsObj_tbl.items():
+                        for mdt_target, mdsObj in mds.items():
+                            # Tags will be indexed and make the query faster
+                            tags = {
+                                "host": mds_host,
+                                "target": mdt_target,
+                                "clustre": mdsObj.cluster
+                            }
+                            # Data Fields
+                            fields = {
+                                "jobid": mdsObj.jobid,
+                                "taskid": mdsObj.taskid,
+                                "open": mdsObj.open,
+                                "close": mdsObj.close,
+                                "crossdir_rename": mdsObj.crossdir_rename,
+                                "getattr": mdsObj.getattr,
+                                "link": mdsObj.link,
+                                "mkdir": mdsObj.mkdir,
+                                "mknod": mdsObj.mknod,
+                                "rename": mdsObj.rename,
+                                "rmdir": mdsObj.rmdir,
+                                "samedir_rename": mdsObj.samedir_rename,
+                                "setattr": mdsObj.setattr,
+                                "remove": mdsObj.unlink
+                            }
+                            # Timestamp
+                            time = datetime.fromtimestamp(int(mdsObj.snapshot_time))
+                            # Create a Data Point
+                            dataPoint = InfluxDB.InfluxObject(
+                                measurement=InfluxDB.Measurements.MDS_MEAS,
+                                tags=tags,
+                                fields=fields,
+                                time=time
+                            )
+                            # Add data point to the list that has to be inserted
+                            data_points.append(dataPoint.to_dict())
+
+                # ================= OSS =================
+                # Get a table of latest OSS_OST data objects
+                ossObj_tbl = provenObj.get_OSS_table()
+                # Update/Insert last collected OSS_MDS data
+                if ossObj_tbl:
+                    # Update/Insert per OSS and OST
+                    for oss_host, ost_tble in ossObj_tbl.items():
+                        for ost_target, ossObj in ost_tble.items():
+                            # Tags will be indexed and make the query faster
+                            tags = {
+                                "host": oss_host,
+                                "target": ost_target,
+                                "clustre": ossObj.cluster
+                            }
+                            # Data Fields
+                            fields = {
+                                "jobid": ossObj.jobid,
+                                "taskid": ossObj.taskid,
+                                "read_ops": ossObj.read_bytes,
+                                "read_bytes": ossObj.read_bytes_sum,
+                                "write_ops": ossObj.write_bytes,
+                                "write_bytes": ossObj.write_bytes_sum
+                            }
+                            #Timestamp
+                            time = datetime.fromtimestamp(int(ossObj.snapshot_time))
+                            # Create a Data Point
+                            dataPoint = InfluxDB.InfluxObject(
+                                measurement=InfluxDB.Measurements.OSS_MEAS,
+                                tags=tags,
+                                fields=fields,
+                                time=time
+                            )
+                            # Add data point to the list that has to be inserted
+                            data_points.append(dataPoint.to_dict())
+
+            #================= Collect Server Stats ======================
+            serverStat_set = set()
+            # Collect all the Server Stats up to this point and keep then in a unique set
+            while not serverStats_Q.empty():
+                # Collect all the server stats
+                serverStat_set.add(serverStats_Q.get())
+
+            for serverStat in serverStat_set:
+                # Extract hostname, timestamp, and cpu load avg
+                host, timestamp, loadAvg, memUsage = serverStat.split(';')
+                # Convert loadAvg and memUsage strings to array
+                loadAvg = eval(loadAvg)
+                memUsage = eval(memUsage)
+                # Tags will be indexed and make the query faster
+                tags = {
+                    "hostname": host
+                }
+                # Data Fields
+                fields = {
+                    "cpu_load_avg_1min": loadAvg[0],
+                    "cpu_load_avg_5min": loadAvg[1],
+                    "cpu_load_avg_15min": loadAvg[2],
+                    "total_mem": memUsage[0],
+                    "used_mem": memUsage[1]
+                }
+                # Timestamp
+                time = datetime.fromtimestamp(float(timestamp))
+                # Create a Data Point
+                dataPoint = InfluxDB.InfluxObject(
+                    measurement=InfluxDB.Measurements.SERVER_STATS_MEAS,
+                    tags=tags,
+                    fields=fields,
+                    time=time
+                )
+                # Add data point to the list that has to be inserted
+                data_points.append(dataPoint.to_dict())
+
+
+            # Now insert all collected time series data into InfluxDB
+            if data_points:
+                influxdb.insert(data_points)
+
+        except DBManagerException as dbExp:
+            log(Mode.DB_OPERATION, dbExp.getMessage())
+
+        finally:
+            if influxdb:
+                # Close InfluxDB Connection
+                influxdb.close()

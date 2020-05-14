@@ -135,7 +135,7 @@ class ChangeLogCollector(Process):
             records = chLogOutput.split(' ')
             # Fill the fileOpObj Object:
             fileOpObj.setMdtTarget(mdtTarget)  # pass the mdtTarget that changeLogs where collected from
-            #fileOpObj.setRecID(records[0])  # Record Id --> My not be useful at all
+            fileOpObj.setRecID(records[0])  # Record Id --> My not be useful at all
             fileOpObj.setOpType(records[1])  # The Type of File Operation
             fileOpObj.setTimestamp(records[2], records[3])  # Date&TimeStamp based on Time and Date of each record
             # -- skip record[4] which is an operation type flag
