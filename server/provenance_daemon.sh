@@ -9,6 +9,8 @@
 #|       Misha Ahmadian (misha.ahmadian@ttu.edu)        |
 #|------------------------------------------------------|
 #
+# Cluster Name
+CLUSTER="genius"
 # Find the Python 3.x on this system
 PYTHON3=$(command -v python3)
 # The minimum required version
@@ -17,6 +19,10 @@ PYTHON3_MINOR=6
 CURRENTPATH="$( cd "$( dirname "$0" )" >/dev/null 2>&1 || exit ; pwd -P )"
 # Location of the PID file
 PID_FILE=/var/run/provenance_service.pid
+# Find the RabbitMQ command
+RABBITMQCTL=$(command -v rabbitmqctl)
+# Get the RabbitMQ virtual host name
+VHOST=$(grep vhost "${CURRENTPATH}"/conf/server.conf | awk -F'=' '{print $2}')
 
 # Check if Python3.x exists and has the right version
 if [ -z "$PYTHON3" ]; then
@@ -28,6 +34,11 @@ else
     echo "Python 3.${PYTHON3_MINOR}+ is required."
     exit 1
   fi
+fi
+# Check if RabbitMQ command exists
+if [ -z "$RABBITMQCTL" ]; then
+  echo "'rabbitmqctl' command was not found"
+  exit1
 fi
 #
 # Control the Daemon:
@@ -41,6 +52,8 @@ start)
       exit 1
     fi
   fi
+  # Clean up the RabbitMQ RPC Channel
+  $RABBITMQCTL -p "$VHOST" purge_queue ${CLUSTER}_rpc_queue
   # Start the Provenance Server Service
   $PYTHON3 "${CURRENTPATH}"/packages/main_interface.py &
   echo $! > $PID_FILE

@@ -65,6 +65,7 @@ class Aggregator(Process):
         provenanceObjManager.start()
 
         try:
+            # ugeService executes when [uge] section appears in server.conf
             ugeService = None
             # If UGE scheduler is defined then use it for scheduler
             if self._uge_clusters:

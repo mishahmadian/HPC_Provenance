@@ -37,7 +37,8 @@ class Config:
     # Validate the server.conf to ensure all the mandatory sections and options
     # are defined and correct
     def __validateConfig(self):
-        config = {'mongodb' : ['host', 'port', 'auth_mode', 'username', 'password', 'database'],
+        config = {'api': ['port'],
+                  'mongodb' : ['host', 'port', 'auth_mode', 'username', 'password', 'database'],
                   'lustre_schema' : ['schema']}
         # Iterate over the Sections in config file
         for section in config.keys():
@@ -131,12 +132,16 @@ class Config:
         return getattr(self, attrName)
 
     # ============= Public Methods =========================================
+    # Get the api port number
+    # Return: int
+    def getApiPort(self) -> int:
+        return self.__getConfigValue('api', 'port', int)
     # Get the hostname of MongoDB
     # Return: String
     def getMongoHost(self) -> str:
         return self.__getConfigValue('mongodb', 'host', str)
 
-    # Get the hot port number of MongoDB
+    # Get the port number of MongoDB
     # Return: int
     def getMongoPort(self) -> int:
         return self.__getConfigValue('mongodb', 'port', int)

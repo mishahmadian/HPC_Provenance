@@ -827,22 +827,22 @@ update_data = [
 # pp = PrettyPrinter(indent=4)
 # pp.pprint(update_q)
 
-from db_manager import InfluxDB
-
-influxdb = InfluxDB()
-
-try:
-    json_point = [{
-        "measurement": "oss",
-        "tags": {"test_tag": "Misha"},
-        "fields": {"test_field": "Ahmadian"},
-    }]
-
-    #influxdb.insert(json_point)
-except Exception as exp:
-    print(str(exp))
-finally:
-    influxdb.close()
+# from db_manager import InfluxDB
+#
+# influxdb = InfluxDB()
+#
+# try:
+#     json_point = [{
+#         "measurement": "oss",
+#         "tags": {"test_tag": "Misha"},
+#         "fields": {"test_field": "Ahmadian"},
+#     }]
+#
+#     #influxdb.insert(json_point)
+# except Exception as exp:
+#     print(str(exp))
+# finally:
+#     influxdb.close()
 
 
 

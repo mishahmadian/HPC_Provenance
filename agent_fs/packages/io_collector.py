@@ -15,12 +15,12 @@
  Misha ahmadian (misha.ahmadian@ttu.edu)
 """
 
+from subprocess import check_output, STDOUT, CalledProcessError
 from Config import AgentConfig, ConfigReadExcetion
 from Communication import Producer, CommunicationExp
 from threading import Thread, Event
 from Logger import log, Mode
 from Queue import Queue
-import subprocess
 import signal
 import socket
 import json
@@ -38,34 +38,49 @@ class CollectIOstats(Thread):
         self.jobstat_Q = jobstat_Q
         self.hostname = socket.gethostname()
         try:
+            # Set time interval for Collecting IO stats
+            self._waitInterval = self.config.getJobstatsInterval()
+
             ## --if self.hostname in self.config.getMDS_hosts():
             # Set JobStat cleanup interval
-            self._setMaxAutoCleanup(self.config.getMaxJobstatAge())
+            # In case that Lustre was down, it waits
+            while True:
+                output = self._setMaxAutoCleanup(self.config.getMaxJobstatAge())
+                if "error" not in output.decode(encoding='UTF=8'):
+                    break
+                time.sleep(self._waitInterval)
 
         except ConfigReadExcetion as confExp:
-            log(Mode.PUBLISHER, confExp.getMessage())
+            log(Mode.IO_COLLECTOR, confExp.getMessage())
 
     # Implement Thread.run()
     def run(self):
-        # Is this server MDS or OSS?
-        serverParam = self._getServerParam()
-        # What are MDT(s) or OST(s)
-        fsnames = self._getfsnames(serverParam)
-
         while not self.exit_flag.is_set():
             try:
-                for target in fsnames:
-                    # Collecting JobStats from Lustre
-                    jobstat_out = self._getJobStats(serverParam, target)
-                    # Put the jobStat output in thread safe Queue along with the fsname target
-                    if jobstat_out.strip():
-                        self.jobstat_Q.put((target, jobstat_out))
-                        # Clear JobStats logs immediately to free space
-                        ##--self._clearJobStats(serverParam, target)
+                # Is this server MDS or OSS?
+                serverParam = self._getServerParam()
+                # What are MDT(s) or OST(s)
+                fsnames = self._getfsnames(serverParam)
 
-                # Set time interval for Collecting IO stats
-                waitInterval = self.config.getJobstatsInterval()
-                self.exit_flag.wait(waitInterval)
+                # Continue if lustre is up and there is no error
+                if isinstance(fsnames, list) and "error" not in fsnames:
+                    for target in fsnames:
+                        # Collecting JobStats from Lustre
+                        jobstat_out = self._getJobStats(serverParam, target)
+                        # Break if error happens due to lustre issue
+                        if "error" in jobstat_out.decode(encoding='UTF=8'):
+                            log(Mode.IO_COLLECTOR, jobstat_out.decode(encoding='UTF=8'))
+                            break
+
+                        # Put the jobStat output in thread safe Queue along with the fsname target
+                        if jobstat_out.strip():
+                            self.jobstat_Q.put((target, jobstat_out))
+                            # Clear JobStats logs immediately to free space
+                            ##--self._clearJobStats(serverParam, target)
+                else:
+                    log(Mode.IO_COLLECTOR, fsnames)
+
+                self.exit_flag.wait(self._waitInterval)
 
             except ConfigReadExcetion as confExp:
                 log(Mode.IO_COLLECTOR, confExp.getMessage())
@@ -81,35 +96,54 @@ class CollectIOstats(Thread):
             raise ConfigReadExcetion("This hostname is not valid . Please check the hostname in 'agent.config' file")
 
     # Find the existing file system names to address the MDT and OST targets
-    def _getfsnames(self, serverParam):
-        fsname = subprocess.check_output("lctl list_param " + serverParam + ".*" , shell=True)
-        fsnames = fsname.encode(encoding='UTF=8').strip().split('\n')
+    @classmethod
+    def _getfsnames(cls, serverParam):
+        fsname = cls._lustre_command("lctl list_param " + serverParam + ".*")
+        fsname = fsname.decode(encoding='UTF=8').strip()
+        # Return the error when error occurs
+        if "error" in fsname:
+            return fsname
+
+        fsnames = fsname.split('\n')
         for inx, val in enumerate(fsnames):
             fsnames[inx] = val.split('.')[1].strip()
         return fsnames
 
     # Read the Jobstats from Lustre logs
-    def _getJobStats(self, serverParam, fsname):
+    @classmethod
+    def _getJobStats(cls, serverParam, fsname):
         param = '.'.join([serverParam, fsname, 'job_stats'])
         read_jobstat = "lctl get_param " + param + " | tail -n +2 "
         clear_jobstat = " lctl set_param " + param + "=clear &>/dev/null"
-        return subprocess.check_output('&&'.join([read_jobstat, clear_jobstat]), shell=True)
+        return cls._lustre_command('&&'.join([read_jobstat, clear_jobstat]))
         # param = '.'.join([serverParam, fsname, 'job_stats'])
         # return subprocess.check_output("lctl get_param " + param + " | tail -n +2", shell=True)
 
     # Check and see if the server is MGS (Lustre Management Server)
-    def _is_MGS(self):
-        mgs = subprocess.check_output("lctl dl | grep -i mgs" , shell=True)
+    @classmethod
+    def _is_MGS(cls):
+        mgs = cls._lustre_command("lctl dl | grep -i mgs")
         if mgs.decode("utf-8").strip(): return True
         return False
 
     # Clear the accumulated JobStats from Luster logs
-    def _clearJobStats(self, serverParam, fsname):
-        subprocess.check_output("lctl set_param " + serverParam + "." + fsname +".job_stats=clear", shell=True)
+    @classmethod
+    def _clearJobStats(cls, serverParam, fsname):
+        return cls._lustre_command("lctl set_param " + serverParam + "." + fsname +".job_stats=clear")
 
     # Set the Maximum auto-cleanup Interval for jobstats
-    def _setMaxAutoCleanup(self, interval):
-        subprocess.check_output("lctl set_param *.*.job_cleanup_interval=" + interval, shell=True)
+    @classmethod
+    def _setMaxAutoCleanup(cls, interval):
+        return cls._lustre_command("lctl set_param *.*.job_cleanup_interval=" + interval)
+
+    # The man subprocess call
+    @staticmethod
+    def _lustre_command(cmd):
+        try:
+            return check_output(cmd, shell=True, stderr=STDOUT)
+        except CalledProcessError as callexp:
+            log(Mode.IO_COLLECTOR, str(callexp))
+            return "error: " + str(callexp)
 
 
 #

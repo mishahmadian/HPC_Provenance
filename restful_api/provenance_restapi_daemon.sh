@@ -1,6 +1,6 @@
 #!/bin/bash
 #|------------------------------------------------------|
-#|            Scheduler Data Collector Daemon           |
+#|             Provenance RESTFUL API Daemon            |
 #|                     Version 1.0                      |
 #|                                                      |
 #|       High Performance Computing Center (HPCC)       |
@@ -16,7 +16,7 @@ PYTHON3_MINOR=6
 # Get the current directory of the Daemon file (works when it called from somewhere else)
 CURRENTPATH="$( cd "$( dirname "$0" )" >/dev/null 2>&1 || exit ; pwd -P )"
 # Location of the PID file
-PID_FILE=/var/run/provenance_sched.pid
+PID_FILE=/var/run/provenance_api.pid
 
 # Check if Python3.x exists and has the right version
 if [ -z "$PYTHON3" ]; then
@@ -37,12 +37,12 @@ start)
   # Check if PID file is already exist
   if [ -f "$PID_FILE" ]; then
     if ps -p "$( cat $PID_FILE )" &> /dev/null; then
-      echo "The provenance_sched is already running... pid=[$( cat $PID_FILE )]"
+      echo "The provenance_api is already running... pid=[$( cat $PID_FILE )]"
       exit 1
     fi
   fi
   # Start the Provenance Server Service
-  $PYTHON3 "${CURRENTPATH}"/packages/schedMain.py &
+  $PYTHON3 "${CURRENTPATH}"/packages/provenance_restapi.py &
   echo $! > $PID_FILE
   ;;
 stop)
@@ -52,13 +52,13 @@ stop)
   else
     # If PID file exist, but the pid is not running, it means the process was killed manually
     if ! ps -p "$( cat $PID_FILE )" &> /dev/null; then
-      echo "The provenance_sched is not running."
+      echo "The provenance_api is not running."
       # Remove the PID file
       rm -f $PID_FILE
       exit 1
     fi
   fi
-  # Send SIGINT then the main process will start wrapping gup the jobs
+  # Send SIGINT then the main process will stop the API Server
   kill -s SIGINT "$( cat $PID_FILE )"
   # Remove the PID file
   rm -f $PID_FILE
@@ -69,9 +69,9 @@ restart)
   ;;
 status)
   if [ -f "$PID_FILE" ]; then
-    echo "The provenance_sched is already running... pid=[$( cat $PID_FILE )]"
+    echo "The provenance_api is already running... pid=[$( cat $PID_FILE )]"
   else
-    echo "The provenance_sched is not running."
+    echo "The provenance_api is not running."
     exit 1
   fi
   ;;
