@@ -40,7 +40,7 @@ class ServerConfig:
                   'rabbitmq' : ['server', 'port', 'username', 'password', 'vhost'],
                   'io_listener' : ['exchange', 'queue'],
                   'changelogs' : ['parallel','interval', 'users'],
-                  'aggregator' : ['interval', 'timer_intv'],
+                  'aggregator' : ['interval'],
                   '*uge' : ['clusters', 'address', 'port', 'acct_interval'],
                   'mongodb' : ['host', 'port', 'auth_mode', 'username', 'password', 'database'],
                   'influxdb' : ['host', 'port', 'username', 'password', 'database']}
@@ -207,8 +207,8 @@ class ServerConfig:
 
     # Get the Aggregator timer Interval
     # Return: Float
-    def getAggrTimer(self) -> float:
-        return self.__getConfigValue('aggregator', 'timer_intv', float)
+    # def getAggrTimer(self) -> float:
+    #     return self.__getConfigValue('aggregator', 'timer_intv', float)
 
     # Get the list of UGE clusters
     #   Return: List

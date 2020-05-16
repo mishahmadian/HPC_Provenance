@@ -46,7 +46,7 @@ class Aggregator(Process):
         self.config = ServerConfig()
         try:
             self._interval = self.config.getAggrIntv()
-            self._timerIntv = self.config.getAggrTimer()
+            #self._timerIntv = self.config.getAggrTimer()
             self._mdtTargets = self.config.getMdtTargets()
             self._chLogUsers = self.config.getChLogsUsers()
             self._uge_clusters = self.config.getUGE_clusters()
@@ -74,9 +74,9 @@ class Aggregator(Process):
             jobScheduler = JobScheduler(UGE=ugeService)
             # Create a Timer Thread to be running for this process and change the
             # "timer_val" value every
-            timer_flag = Event_Thr()
-            timer = Thread(target=self._timer, args=(timer_flag, self._timerIntv,))
-            timer.setDaemon(True)
+            #==timer_flag = Event_Thr()
+            #==timer = Thread(target=self._timer, args=(timer_flag, self._timerIntv,))
+            #==timer.setDaemon(True)
             #==timer.start()
 
             # Create a shard Dictionary object which allows three process to update their values

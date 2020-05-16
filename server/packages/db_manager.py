@@ -74,14 +74,16 @@ class MongoDB:
                 # Create Index for MDS DB
                 elif collection.value == 'mds_stats':
                     # Index the uid only
-                    mds_uid_inx = IndexModel([("uid", TEXT)], name="mds_uid_inx")
+                    mds_uid_inx = IndexModel([("uid", TEXT), ("mds_host", ASCENDING), ("mdt_target", ASCENDING)],
+                                             name="mds_uid_inx")
                     # Add/Create Index
                     coll.create_indexes([mds_uid_inx])
 
                 # Create Index for OSS DB
                 elif collection.value == 'oss_stats':
                     # Index the uid only
-                    oss_uid_inx = IndexModel([("uid", TEXT)], name="oss_uid_inx")
+                    oss_uid_inx = IndexModel([("uid", TEXT), ("oss_host", ASCENDING), ("ost_target", ASCENDING)],
+                                             name="oss_uid_inx")
                     # Add/Create Index
                     coll.create_indexes([oss_uid_inx])
 
@@ -294,7 +296,7 @@ class InfluxDB:
         try:
             config = ServerConfig()
             # Make a connection to InfluxDB
-            self.influxdbClient = InfluxDBClient(
+            self._influxdbClient = InfluxDBClient(
                 host=config.getInfluxdbHost(),
                 port=config.getInfluxdbPort(),
                 username=config.getInfluxdbUser(),
@@ -312,7 +314,7 @@ class InfluxDB:
         :return: None
         """
         try:
-            return self.influxdbClient.write_points(data_points)
+            return self._influxdbClient.write_points(data_points)
 
         except InfluxDBClientError as influxCliExp:
             raise DBManagerException(f"(close) {str(influxCliExp)}", DBManagerException.DBType.INFLUX_DB)
@@ -329,7 +331,7 @@ class InfluxDB:
             Close the connection to InfluxDB
         """
         try:
-            self.influxdbClient.close()
+            self._influxdbClient.close()
 
         except InfluxDBClientError as influxCliExp:
             raise DBManagerException(f"(close) {str(influxCliExp)}", DBManagerException.DBType.INFLUX_DB)
