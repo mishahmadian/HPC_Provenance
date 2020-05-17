@@ -68,7 +68,7 @@ class MongoDB:
         if uid:
             filter_oss[u"$match"].update({u"uid": uid})
         if days:
-            filter_oss.update({"create_time": {
+            filter_oss[u"$match"].update({"create_time": {
                 "$gte": datetime.now() - timedelta(days=days)
             }})
 
@@ -171,7 +171,7 @@ class MongoDB:
         if uid:
             filter_mds[u"$match"].update({u"uid": uid})
         if days:
-            filter_mds.update({"create_time": {
+            filter_mds[u"$match"].update({"create_time": {
                 "$gte": datetime.now() - timedelta(days=days)
             }})
 
@@ -288,7 +288,7 @@ class MongoDB:
         if uid:
             filter_fileops[u"$match"].update({u"uid": uid})
         if days:
-            filter_fileops.update({"create_time": {
+            filter_fileops[u"$match"].update({"create_time": {
                 "$gte": datetime.now() - timedelta(days=days)
             }})
 
