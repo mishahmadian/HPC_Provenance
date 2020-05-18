@@ -8,8 +8,8 @@
 """
 from db_manager import MongoDB, InfluxDB, DBManagerException
 from pymongo.errors import DuplicateKeyError
+from scheduler import UGEJobInfo, JobInfo
 from multiprocessing import Queue
-from scheduler import UGEJobInfo
 from datetime import datetime
 from logger import log, Mode
 import aggregator as aggr
@@ -48,7 +48,18 @@ class MongoOPs:
                 # in database. That should be ignored!
                 if jobinfo and isinstance(jobinfo, UGEJobInfo): # 'or' isinstance(Slurm...)
                     # Insert/Update one job per document, Ignore JobInfos after the jobs is finished
-                    update_query = {'uid' : uid, 'status' : {"$ne" : "FINISHED"}}
+                    update_query = {'uid' : uid}
+                    # Ignore updating the DB for following status but still allowed to insert as a new doc
+                    if jobinfo.status in [JobInfo.Status.UNDEF, JobInfo.Status.OTHERS, JobInfo.Status.NONE]:
+                        update_query.update({'$and' : [
+                            {'status': {"$ne": "FINISHED"}},
+                            {'status': {"$ne": "RUNNING"}}
+                        ]})
+
+                    # Do not allow to insert anything after job gets finished
+                    else:
+                        update_query.update({'status': {"$ne": "FINISHED"}})
+
                     try:
                         # Make the update request
                         jobinfo_update = {
