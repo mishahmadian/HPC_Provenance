@@ -11,54 +11,56 @@
  Misha ahmadian (misha.ahmadian@ttu.edu)
 """
 from multiprocessing import Process, Event, Queue, Pool, cpu_count
+from subprocess import check_output, CalledProcessError, DEVNULL
 from config import ServerConfig, ConfigReadExcetion
 from exceptions import ProvenanceExitExp
 from datetime import datetime
+from logger import log, Mode
 from typing import List
-from pprint import pprint
 from math import ceil
-import subprocess
 import hashlib
 import ctypes
-import time
-import os
 #
-# This Class defines a new process to collect Lustre changelog data from
-# Lustre client. The changelog has to be registered on MGS server.
+# Lustre Change Logs Process
 #
 class ChangeLogCollector(Process):
-    def __init__(self, fileOP_Q: Queue):
+    """
+    This Class defines a new process to collect Lustre changelog data from
+    Lustre client. The changelog has to be registered on MGS server.
+    """
+    def __init__(self, fileOP_Q: Queue, shut_down: Event):
         Process.__init__(self)
         self.fileOP_Q = fileOP_Q
         self.event_flag = Event()
+        self._shutdown = shut_down
         self.config = ServerConfig()
         try:
-            self.__mdtTargets = self.config.getMdtTargets()
-            self.__interval = self.config.getChLogsIntv()
-            self.__chLogUsers = self.config.getChLogsUsers()
-            __procNum = self.config.getChLogsPocnum()
+            self._mdtTargets = self.config.getMdtTargets()
+            self._interval = self.config.getChLogsIntv()
+            self._chLogUsers = self.config.getChLogsUsers()
+            _procNum = self.config.getChLogsPocnum()
             # If number of processes are less than 1 then all the available processes will be used
-            self.__procNum = __procNum if __procNum > 0 else cpu_count()
+            self._procNum = _procNum if _procNum > 0 else cpu_count()
 
         except ConfigReadExcetion as confExp:
-            print(confExp.getMessage())
+            log(Mode.FILE_OP_LOGS, confExp.getMessage())
 
     # Implement Process.run()
     def run(self):
         # keep the last record that has been processed and use that as the first record
         # that should be processed for each MDT Target. The default value of zero let
         # ChangLogs to be captured from the beginning
-        lastCapturedRec = [0 for _ in range(0, len(self.__mdtTargets))]
+        lastCapturedRec = [0 for _ in range(0, len(self._mdtTargets))]
         # Pool of processes that parse the ChangeLogs
         pool = None
         try:
-            while not self.event_flag.is_set():
+            while not (self.event_flag.is_set() or self._shutdown.is_set()):
 
-                for inx, mdtTarget in enumerate(self.__mdtTargets):
+                for inx, mdtTarget in enumerate(self._mdtTargets):
                     # Create a list of FileOpObj objects
                     fileOpObj_Lst: List[FileOpObj]
                     # Collect ChangeLogs from Client Lustre filesystem
-                    chLogs_out = self.__collectChangeLogs(mdtTarget, lastCapturedRec[inx])
+                    chLogs_out = self._collectChangeLogs(mdtTarget, lastCapturedRec[inx])
                     # convert each row into an item in a List for parallel processing the list
                     chLogOutputs: List[str] = chLogs_out.splitlines()
                     # If the list of chLogOutputs is empty, then ignore following lines
@@ -66,13 +68,13 @@ class ChangeLogCollector(Process):
                         continue
 
                     # Define the size of each chunk of data than needs to be processed by each process
-                    if self.__procNum > 1:
-                        chunkSize = ceil(len(chLogOutputs) / 2 / self.__procNum)
+                    if self._procNum > 1:
+                        chunkSize = ceil(len(chLogOutputs) / 2 / self._procNum)
                     else:
                         chunkSize = 1
 
                     # Create a pool of process, and assign the number of process which is defined by user
-                    pool = Pool(processes = self.__procNum if self.__procNum > 0 else cpu_count())
+                    pool = Pool(processes = self._procNum if self._procNum > 0 else cpu_count())
                     # run a poll of process to map the ChangeLogs outputs line by line to FileOpObj objects
                     # Those lines that do not have JobId will be ignored at this time!
                     fileOpObj_Lst = pool.starmap(self.changeLogs2FileOpsObj,
@@ -87,36 +89,41 @@ class ChangeLogCollector(Process):
                         self.fileOP_Q.put(fileOpObj_Lst)
 
                         # corresponding user to this MDT Target:
-                        user = self.__chLogUsers[inx]
+                        user = self._chLogUsers[inx]
                         # last rec# defines the last record than should be cleared up to.
                         # The last object in the list holds the last Rec#
                         endRecNum = fileOpObj_Lst[-1].recID
                         # Keep the endRecNum in array cell corresponding to the MDT Targets index
                         lastCapturedRec[inx] = int(endRecNum)
                         # Clear off the ChangeLogs (optimization)
-                        ###self.__clearChangeLogs(mdtTarget, user, endRecId)
-
-                        #pprint(vars(fileOpObj_Lst[-1]))
+                        ###self._clearChangeLogs(mdtTarget, user, endRecId)
 
                 # wait between collecting ChangeLogs
-                self.event_flag.wait(self.__interval)
+                self.event_flag.wait(self._interval)
 
         except ProvenanceExitExp:
             pass
 
         finally:
-            if not pool is None:
+            if pool:
                 pool.terminate()
                 pool.join()
 
 
     # Collecting the lustre ChangeLogs data
-    def __collectChangeLogs(self, mdtTarget: str, startRec: int) -> str:
-        return subprocess.check_output("lfs changelog " + mdtTarget + " " + str(startRec + 1), shell=True).decode("utf-8")
+    def _collectChangeLogs(self, mdtTarget: str, startRec: int) -> str:
+        """
+        Utilizing "lfs" command of the local machine and captures the File Operations from Lustre client
+
+        :param mdtTarget: String - MDT Targets should already be defined in server.conf configuration file
+        :param startRec: Integer -  Captures from where it left off
+        :return: Line-separated records
+        """
+        return check_output("lfs changelog " + mdtTarget + " " + str(startRec + 1), shell=True).decode("utf-8")
 
     # Clear old ChangeLogs records
-    def __clearChangeLogs(self, mdtTarget: str, user: str, endRec: int):
-        subprocess.check_output("lfs changelog_clear " + mdtTarget + " " + user + " " + str(endRec), shell=True)
+    def _clearChangeLogs(self, mdtTarget: str, user: str, endRec: int):
+        check_output("lfs changelog_clear " + mdtTarget + " " + user + " " + str(endRec), shell=True)
 
     # Convert (Parse & Compile) the ChangeLog output to FileOpObj object
     @staticmethod
@@ -128,7 +135,7 @@ class ChangeLogCollector(Process):
             records = chLogOutput.split(' ')
             # Fill the fileOpObj Object:
             fileOpObj.setMdtTarget(mdtTarget)  # pass the mdtTarget that changeLogs where collected from
-            fileOpObj.setRecID(records[0])  # Record Id
+            fileOpObj.setRecID(records[0])  # Record Id --> My not be useful at all
             fileOpObj.setOpType(records[1])  # The Type of File Operation
             fileOpObj.setTimestamp(records[2], records[3])  # Date&TimeStamp based on Time and Date of each record
             # -- skip record[4] which is an operation type flag
@@ -149,6 +156,12 @@ class ChangeLogCollector(Process):
                     elif "p=" in rec:
                         fileOpObj.setParentFid(rec, mdtTarget)  # Parent FID of the target if provided
 
+                    elif "m=" in rec:
+                        fileOpObj.setOpenMode(rec)
+
+                    elif "x=" in rec:
+                        fileOpObj.setXattr(rec)
+
                     elif (inx == len(records[7:]) - 1) and ("=" not in rec):
                         fileOpObj.setTargetFile(rec)  # Anything else should be the target file name if applicable
 
@@ -163,17 +176,20 @@ class ChangeLogCollector(Process):
 #
 class FileOpObj(object):
     def __init__(self):
-        self.recID = 0
+        self.recID = None
         self.jobid = None
+        self.taskid = None
         self.cluster = None
         self.sched_type = None
         self.procid = None
         self.op_type = None
+        self.open_mode = None
+        self.ext_attr = None
         self.timestamp = None
         self.target_fid = None
         self.target_path = None
-        self.uid = None
-        self.gid = None
+        self.userid = None
+        self.groupid = None
         self.nid = None
         self.parent_fid = None
         self.parent_path = None
@@ -189,12 +205,22 @@ class FileOpObj(object):
         if '_' in jobInfo: # this type of JobInfo comes from scheduler
             self.cluster, self.sched_type, self.jobid = \
                     jobInfo.strip().split('_')
+            # if the jobid is separated by '.' then it means the job is an array job
+            if '.' in self.jobid:
+                self.jobid, self.taskid = self.jobid.split('.')
+
         elif jobInfo:
             self.procid = jobInfo
 
     def setOpType(self, opinfo):
         # Ignore the Operation code
         self.op_type = ''.join([ch for ch in opinfo if not ch.isdigit()])
+
+    def setOpenMode(self, mode):
+        self.open_mode = mode.split('=')[1].strip()
+
+    def setXattr(self, xattr):
+        self.ext_attr = xattr.split('=')[1].strip()
 
     def setTimestamp(self, time_str, date_str):
         # (Naive way) Covert the Nanosecond to Millisecond since Python does not support Nanoseconds
@@ -205,15 +231,14 @@ class FileOpObj(object):
     def setTargetFid(self, tfid, mdtTarget):
         self.target_fid = tfid.split('=')[1].strip()
         try:
-            with open(os.devnull, 'w') as nullDev:
-                self.target_path = subprocess.check_output("lfs fid2path " + mdtTarget + " " + self.target_fid,
-                                                           shell=True, stderr=nullDev).decode("utf-8").strip()
-        except subprocess.CalledProcessError:
+            self.target_path = check_output("lfs fid2path --link 1 " + mdtTarget + " " + self.target_fid,
+                                                       shell=True, stderr=DEVNULL).decode("utf-8").strip()
+        except CalledProcessError:
             # The file has been removed already and the fid is invalid
             self.target_path = "File Not Exist"
 
     def setUserInfo(self, userinfo):
-        self.uid, self.gid = userinfo.strip().split('=')[1].split(':')
+        self.userid, self.groupid = userinfo.strip().split('=')[1].split(':')
 
     def setNid(self, nid):
         self.nid = nid.split('=')[1].strip()
@@ -221,10 +246,9 @@ class FileOpObj(object):
     def setParentFid(self, pfid, mdtTarget):
         self.parent_fid = pfid.split('=')[1].strip()
         try:
-            with open(os.devnull, 'w') as nullDev:
-                self.parent_path = subprocess.check_output("lfs fid2path " + mdtTarget + " " + self.parent_fid,
-                                                           shell=True, stderr=nullDev).decode("utf-8").strip()
-        except subprocess.CalledProcessError:
+            self.parent_path = check_output("lfs fid2path --link 1 " + mdtTarget + " " + self.parent_fid,
+                                                       shell=True, stderr=DEVNULL).decode("utf-8").strip()
+        except CalledProcessError:
             # The file has been removed already and the fid is invalid
             self.parent_path = "File Not Exist"
 
@@ -240,9 +264,21 @@ class FileOpObj(object):
             # No hash for this object if jobID is not defined
             return None
         # calculate the MD5 hash
-        obj_id = ''.join([self.sched_type, self.cluster, self.jobid])
+        obj_id = ''.join(filter(None, [self.sched_type, self.cluster, self.jobid, self.taskid]))
         hash_id = hashlib.md5(obj_id.encode(encoding='UTF=8'))
         return hash_id.hexdigest()
+
+    # Return a dictionary format of all attrs and their values
+    def to_dict(self) -> dict:
+        attrDict = {}
+        # collect all available attributes
+        attrs = [atr for atr in dir(self) if (not atr.startswith('__')) and (not callable(getattr(self, atr)))]
+        for attr in attrs:
+            attrDict[attr] = getattr(self, attr)
+        # append the unique ID
+        attrDict['uid'] = self.uniqID()
+        #
+        return attrDict
 
     # Overriding the Hash function for this object
     def __hash__(self):

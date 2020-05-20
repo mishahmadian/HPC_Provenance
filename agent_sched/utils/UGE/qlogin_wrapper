@@ -1,0 +1,31 @@
+#!/bin/sh 
+##|==================================================|
+##|         High Performance Computing Center        |
+##|               Texas Tech University              |
+##|                                                  |
+##| Modified by:                                     |
+##| misha.ahmadian@ttu.edu                           |
+##|==================================================|
+#
+HOST=$1 
+PORT=$2 
+#
+USERS="mahmadia wang41 slakkire errees"
+# /usr/bin/ssh -Y -o LogLevel=ERROR -p $PORT $HOST
+# Ensure forwarding:
+echo "DISPLAY=$DISPLAY HOST=$HOST PORT=$PORT"
+
+if [ "x$DISPLAY" = "x" ]; then
+   if [[ "$USERS" == *"$USER"* ]] && [ "$QLOGIN_NEW" == "1" ]; then
+   	exec /usr/bin/ssh -t -o LogLevel=ERROR -p $PORT $HOST "source /export/uge/scripts/qlogin_fix_it.sh; exec /bin/bash -li"
+   else
+   	exec /usr/bin/ssh -o LogLevel=ERROR -p $PORT $HOST
+   fi
+else
+   if [[ "$USERS" == *"$USER"* ]] && [ "$QLOGIN_NEW" == "1" ]; then
+   	echo "Enabling X11 forwarding"
+   	exec /usr/bin/ssh -X -Y -t -o LogLevel=ERROR -p $PORT $HOST "source /export/uge/scripts/qlogin_fix_it.sh; exec /bin/bash -li"
+   else
+   	exec /usr/bin/ssh -X -Y -o LogLevel=ERROR -p $PORT $HOST
+   fi
+fi

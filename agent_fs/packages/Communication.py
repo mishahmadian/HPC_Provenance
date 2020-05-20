@@ -101,7 +101,7 @@ class CommunicationExp(Exception):
 
     #
     # Communication Exception may have different causes
-    # This a stupid. Sadly, python 2.7 doea not support Enum :(
+    # This a stupid. Sadly, python 2.7 does not support Enum :(
     class Type:
         AMQP_CONFIG = 'AMQP_CONFIG'
         AMQP_CONN = 'AMQP_CONN'

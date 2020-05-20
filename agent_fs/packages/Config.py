@@ -33,9 +33,10 @@ class AgentConfig:
     # Validate the agent.conf to ensure all the mandatorysections and options
     # are defined and correct
     def __validateConfig(self):
-        config = {'lustre' : ['mds_hosts', 'oss_hosts', 'fsnames', 'interval'],
+        config = {'lustre' : ['mds_hosts', 'oss_hosts', 'interval'],
                   'rabbitmq' : ['server', 'username', 'password'],
-                  'producer' : ['exchange', 'queue', 'delay']}
+                  'producer' : ['exchange', 'queue', 'delay'],
+                  'stats': ['cpu_load', 'mem_usage']}
         # Iterate over the Sections in config file
         for section in config.keys():
             if not self.__parser.has_section(section):
@@ -74,13 +75,6 @@ class AgentConfig:
             return True
         return False
 
-
-    # Get a list of Lustre fsname(s) defined in Config file
-    #   Return: List
-    def getFsnames(self):
-        if self.__loadConfigFile() or not hasattr(self, 'fsnames'):
-            self.fsnames = [fsname.strip() for fsname in self.__parser.get('lustre', 'fsnames').split(',')]
-        return self.fsnames
 
     # Get a list of MDS host names defined in Config file
     #   Return: List
@@ -172,13 +166,37 @@ class AgentConfig:
                 raise ConfigReadExcetion("The 'delay' parameter under [producer] section must be numeric")
         return float(self.sendIntv)
 
+    # The agent should/not collect CPU Load of the host
+    # Return: Boolean
+    def is_CPU_Load_avail(self):
+        if self.__loadConfigFile() or not hasattr(self, 'cpuLoad'):
+            cpuLoad = self.__parser.get('stats', 'cpu_load')
+            if cpuLoad.lower() == 'true':
+                return True
+            elif cpuLoad.lower() == 'false':
+                return False
+            else:
+                raise ConfigReadExcetion("The 'cpu_load' parameter under [stats] section must be True/False")
+
+    # The agent should/not collect CPU Load of the host
+    # Return: Boolean
+    def is_Mem_Usage_avail(self):
+        if self.__loadConfigFile() or not hasattr(self, 'memUsage'):
+            memUsage = self.__parser.get('stats', 'mem_usage')
+            if memUsage.lower() == 'true':
+                return True
+            elif memUsage.lower() == 'false':
+                return False
+            else:
+                raise ConfigReadExcetion("The 'mem_usage' parameter under [stats] section must be True/False")
+
 #
 # In any case of Error, Exception, or Mistake ConfigReadExcetion will be raised
 #
 class ConfigReadExcetion(Exception):
     def __init__(self, message):
-        super(ConfigReadExcetion, self).__init__(message)
         self.message = "\n [Error] _CONFIG_: " + message + "\n"
+        super(ConfigReadExcetion, self).__init__(self.message)
 
     def getMessage(self):
         return self.message

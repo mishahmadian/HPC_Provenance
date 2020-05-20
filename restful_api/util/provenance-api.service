@@ -1,0 +1,16 @@
+[Unit]
+Description=HPC Provenance Server Service
+After=network.target sgeexecd.service rabbitmq-server.service
+Wants=sgeexecd.service
+
+[Service]
+Type=forking
+ExecStart=/opt/ohpc/pub/apps/HPC_Provenance/restful_api/provenance_restapi_daemon.sh start
+ExecReload=/opt/ohpc/pub/apps/HPC_Provenance/restful_api/provenance_restapi_daemon.sh restart
+ExecStop=/opt/ohpc/pub/apps/HPC_Provenance/restful_api/provenance_restapi_daemon.sh stop
+
+#StandardOutput=journal+console
+#StandardError=journal+console
+
+[Install]
+WantedBy=multi-user.target
