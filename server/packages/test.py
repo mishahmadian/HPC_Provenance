@@ -844,5 +844,19 @@ update_data = [
 # finally:
 #     influxdb.close()
 
+from uge_service import UGE
+from scheduler import UGEJobInfo
+
+jobinfo = UGEJobInfo()
+jobinfo.jobid = "869"
+# jobinfo.exec_host = "compute-14-15.localdomain"
+# jobinfo.pwd = "/home/misha/uge"
+# jobinfo.command = "qsub sleep.sh"
+spool_dir = "/export/uge/default/spool"
+
+jobscript = UGE.getJobScript(jobinfo, spool_dir)
+
+print(jobscript)
+
 
 

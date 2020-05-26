@@ -71,6 +71,14 @@ class MongoDB:
                     # Add/Create indexes
                     coll.create_indexes([uid_uniq_inx])
 
+                # Create Index for JobInfo
+                elif collection.value == "jobscript":
+                    # Define the Index(es)
+                    jobscript_uniq_inx = IndexModel([("jobid", TEXT), ("cluster", ASCENDING)],
+                                              name="jobscript_uid_uniq_inx", unique=True)
+                    # Add/Create indexes
+                    coll.create_indexes([jobscript_uniq_inx])
+
                 # Create Index for MDS DB
                 elif collection.value == 'mds_stats':
                     # Index the uid only
@@ -279,6 +287,7 @@ class MongoDB:
             The available collections for this MondoDB are defined in this Enum class
         """
         JOB_INFO_COLL = 'jobinfo'
+        JOB_SCRIPT_COLL = 'jobscript'
         MDS_STATS_COLL = 'mds_stats'
         OSS_STATS_COLL = 'oss_stats'
         FILE_OP_COLL = 'file_op'

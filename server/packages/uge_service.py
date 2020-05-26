@@ -12,6 +12,7 @@ from communication import ServerConnection
 from config import ServerConfig
 #from scheduler import UGEJobInfo
 import json, urllib.request
+from pathlib import Path
 from typing import List
 import scheduler
 #
@@ -108,6 +109,56 @@ class UGE:
     # def close(self):
     #     if self._ugeAcctProc:
     #         self._ugeAcctProc.terminate()
+
+    #
+    # Find and return the job submission script of the given job
+    #
+    def getUGE_JobScript(self, jobinfo: 'scheduler.UGEJobInfo'):
+
+        jobid, exec_host, work_dir, cmd = jobinfo.jobid, jobinfo.exec_host, jobinfo.pwd, jobinfo.command
+        # Do not proceed for the following types of job
+        if cmd and any(q_cmd in cmd.lower() for q_cmd in ["qlogin", "qrsh"]):
+            return "-1" ## This job has no script file
+            # The requested cluster must exist in server.conf
+
+        uge_clusters = self.config.getUGE_clusters()
+        if jobinfo.cluster and jobinfo.cluster in uge_clusters:
+            cluster_inx = uge_clusters.index(jobinfo.cluster)
+        else:
+            raise UGEServiceException("Configurations specs for [" + jobinfo.cluster + "] "
+                                         "cannot be found in server.conf")
+
+        # The location of UGE Spool Directory for this 'cluster'
+
+        uge_spool_dir = self.config.getUGE_spool_dirs()[cluster_inx]
+        # First check the spool directory for the script file. That's the most reliable version
+        if uge_spool_dir and exec_host:
+            exec_host = exec_host.split('.')[0]
+            # Find the spool directory under
+            uge_job_script = Path(uge_spool_dir).joinpath(exec_host).joinpath("job_scripts").joinpath(jobid)
+            if not uge_job_script.exists():
+                # Sometimes UGE creates an strange spool directory hierarchy
+                uge_job_script = Path(uge_spool_dir).joinpath(exec_host).joinpath(exec_host)\
+                    .joinpath("job_scripts").joinpath(jobid)
+                if not uge_job_script.exists():
+                    uge_job_script = None
+
+            # Get job submission script content
+            if uge_job_script:
+                with open(uge_job_script.as_posix(), mode='r') as jobScriptF:
+                    return jobScriptF.read()
+
+        # If job submission script was not available in UGE Spool directory, then it means
+        # the job has been finished and may be able to find the script file under user directory
+        if work_dir and cmd:
+            script_file = cmd.split()[-1]
+            # Look into user's directory and try to find the script file
+            uge_job_script = Path(work_dir).joinpath(script_file)
+            if uge_job_script.exists():
+                with open(uge_job_script.as_posix(), mode='r') as jobScriptF:
+                    return jobScriptF.read()
+
+        return None
 
 
     @staticmethod

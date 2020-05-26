@@ -15,9 +15,9 @@ from file_io_stats import MDSDataObj, OSSDataObj
 from db_operations import MongoOPs, InfluxOPs
 from exceptions import ProvenanceExitExp
 from collections import defaultdict
+from typing import List, Dict, Set
 from file_op_logs import FileOpObj
 from bisect import bisect_left
-from typing import List, Dict
 from logger import log, Mode
 from uge_service import UGE
 import subprocess
@@ -108,8 +108,7 @@ class Aggregator(Process):
                                                                             self.jobInfo_Q,)))
                 # Aggregate Job Info(s) from Job Scheduler(s)
                 procList.append(Process(target=self._aggregateJobs, args=(jobScheduler, provenanceTbl,
-                                                                          self.jobInfo_Q, provenanceObjManager,
-                                                                            aggregatorLock,)))
+                                                                          self.jobInfo_Q)))
 
                 # Start all the aggregator processes:
                 for proc in procList:
@@ -157,7 +156,7 @@ class Aggregator(Process):
                 self._clearProvenTbl(provenanceTbl)
 
             # Terminate timer after flag is set
-            timer_flag.set()
+            #timer_flag.set()
             # jobScheduler.close()
 
         except JobSchedulerException as jobSchedExp:
@@ -207,12 +206,12 @@ class Aggregator(Process):
                         # if no data has been collected for this JonID_Cluster_SchedType,
                         #  then create a ProvenanceObj and fill it
                         with aggregatorLock:
-                            if not provenanceTbl.get(uniq_id):
+                            if not provenanceTbl.get(uniq_id, None):
                                 provenanceTbl[uniq_id] = provObjMngr.ProvenanceObj()
                                 # create an empty JobInfo object
                                 jobInfo = JobInfo()
                                 jobInfo.cluster = obj_Q.cluster
-                                jobInfo.sched = obj_Q.sched_type
+                                jobInfo.sched_type = obj_Q.sched_type
                                 jobInfo.jobid = obj_Q.jobid
                                 jobInfo.taskid = (obj_Q.taskid if obj_Q.taskid else None)
                                 jobInfo.status = JobInfo.Status.NONE
@@ -236,8 +235,7 @@ class Aggregator(Process):
     #
     # Aggregate Job Info objects
     #
-    def _aggregateJobs(self, jobScheduler: JobScheduler, provenanceTbl: 'DictProxy', jobInfo_Q : Queue,
-                       provObjMngr : '_AggregatorManager', aggregatorLock):
+    def _aggregateJobs(self, jobScheduler: JobScheduler, provenanceTbl: 'DictProxy', jobInfo_Q : Queue):
         """
         Aggregate the Job Info objects that come from Job Scheduler(s)
 
@@ -280,8 +278,14 @@ class Aggregator(Process):
                     uniq_id = jobInfo.uniqID()
 
                     # If received a JobInfo that its uniq_id is not present in Provenance Table then ignore it
-                    if not provenanceTbl.get(uniq_id):
+                    provenanceObj = provenanceTbl.get(uniq_id, None)
+                    if not provenanceObj:
                         continue
+                    else:
+                        # If job_script is empty then try to get the job script for this job
+                        if not provenanceObj.jobInfo.job_script:
+                            jobInfo.job_script = jobScheduler.getJobScript(jobInfo)
+
                     # Update the JobInfo for this record in the Provenance Table
                     provenanceTbl._callmethod('__getitem__', (uniq_id,)).updateJobInfo(jobInfo)
                     # Check on this job again in next round if the status is not FINISHED yet
@@ -413,9 +417,11 @@ class ProvenanceObj(object):
 
     #
     # update the jobInfo object
-    def updateJobInfo(self, jobInfo):
-        self.jobInfo = jobInfo
-        #self.jobInfo.jobid = int(jobInfo.jobid)
+    def updateJobInfo(self, jobinfo):
+        if type(self.jobInfo) is not type(jobinfo):
+            self.jobInfo = jobinfo
+        else:
+            self.jobInfo.update(jobinfo)
 
     # This function receives any type of MDSDataObj, OSSDataObj, or FileOpObj
     # objects and uses the timestamp attribute as the key to sort them while

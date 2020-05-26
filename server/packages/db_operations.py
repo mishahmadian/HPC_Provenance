@@ -47,23 +47,41 @@ class MongoOPs:
                 # gets a chance to be filled out by the "JobScheduler" class, it comes here to be stored
                 # in database. That should be ignored!
                 if jobinfo and isinstance(jobinfo, UGEJobInfo): # 'or' isinstance(Slurm...)
-                    # Insert/Update one job per document, Ignore JobInfos after the jobs is finished
-                    update_query = {'uid' : uid}
-                    # Ignore updating the DB for following status but still allowed to insert as a new doc
-                    if jobinfo.status in [JobInfo.Status.UNDEF, JobInfo.Status.OTHERS, JobInfo.Status.NONE]:
-                        update_query.update({'$and' : [
-                            {'status': {"$ne": "FINISHED"}},
-                            {'status': {"$ne": "RUNNING"}}
-                        ]})
+                    #------------------------- Job Script -----------------------------
+                    jobinfo_json = jobinfo.to_dict()
+                    # Insert Job Script content in a different collection
+                    job_script = jobinfo_json.pop('job_script')
+                    # Insert job_script only if exists:
+                    if job_script and job_script != "-1":
+                        try:
+                            data_doc = {'jobid': jobinfo_json['jobid'],
+                                        'cluster': jobinfo_json['cluster'],
+                                        'job_script': job_script}
+                            # Insert only one unique document per job script
+                            mongodb.insert(MongoDB.Collections.JOB_SCRIPT_COLL, data_doc)
 
-                    # Do not allow to insert anything after job gets finished
-                    else:
-                        update_query.update({'status': {"$ne": "FINISHED"}})
+                        # Ignore the duplicate key error for multiple job_script insertion
+                        except DuplicateKeyError:
+                            pass
+
+                    # -------------------------- Job Info ------------------------------
+                    # Insert/Update one job per document, Ignore JobInfos after the jobs is finished
+                    update_query = {'uid' : uid, 'status': {"$ne": "FINISHED"}}
+                    # # Ignore updating the DB for following status but still allowed to insert as a new doc
+                    # if jobinfo.status in [JobInfo.Status.UNDEF, JobInfo.Status.OTHERS, JobInfo.Status.NONE]:
+                    #     update_query.update({'$and' : [
+                    #         {'status': {"$ne": "FINISHED"}},
+                    #         {'status': {"$ne": "RUNNING"}}
+                    #     ]})
+                    #
+                    # # Do not allow to insert anything after job gets finished
+                    # else:
+                    #     update_query.update({'status': {"$ne": "FINISHED"}})
 
                     try:
                         # Make the update request
                         jobinfo_update = {
-                            "$set" : jobinfo.to_dict(),
+                            "$set" : jobinfo_json,
                             # Add create_time upon first insertion
                             "$setOnInsert" : {"create_time" : datetime.utcnow()},
                             # Add modified_time upon each update

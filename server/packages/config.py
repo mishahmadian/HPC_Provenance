@@ -41,7 +41,7 @@ class ServerConfig:
                   'io_listener' : ['exchange', 'queue'],
                   'changelogs' : ['parallel','interval', 'users'],
                   'aggregator' : ['interval'],
-                  '*uge' : ['clusters', 'address', 'port', 'acct_interval'],
+                  '*uge' : ['clusters', 'address', 'port', 'acct_interval', 'spool_dirs'],
                   'mongodb' : ['host', 'port', 'auth_mode', 'username', 'password', 'database'],
                   'influxdb' : ['host', 'port', 'username', 'password', 'database']}
         # Iterate over the Sections in config file
@@ -224,6 +224,11 @@ class ServerConfig:
     # return list
     def getUGE_Port(self) -> list:
         return self.__getConfigValue('uge', 'ports', list)
+
+    # Get List of UGE spool directories
+    # return list
+    def getUGE_spool_dirs(self) -> list:
+        return self.__getConfigValue('uge', 'spool_dirs', list)
 
     # Get the RPC Calls Interval for collecting UGE accounting data
     # Return: Float
