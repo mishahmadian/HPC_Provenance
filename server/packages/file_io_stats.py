@@ -137,6 +137,7 @@ class IOStatsListener(Process):
         serverHost = data["server"]
         serverTarget = data["fstarget"]
         max_age = int(data["maxAge"])
+        jobid_vars: List[str] = self.config.getJobIdVars()
         # Filter out a group of received JobStats of different jobs
         jobstatLst = data["output"].split("job_stats:")
         # drop the first element because its always useless
@@ -167,7 +168,7 @@ class IOStatsListener(Process):
                     # Create new MDSDataObj
                     mdsObj = MDSDataObj()
                     # if the id format is not compatible with "cluster_scheduler_ID" then it's a process id
-                    if '_' not in jobid:
+                    if not any([jobid.startswith(jobid_var) for jobid_var in jobid_vars]):
                         mdsObj.procid = jobid
                     # Otherwise, it is a JOB
                     else:
@@ -218,6 +219,7 @@ class IOStatsListener(Process):
         serverHost = data["server"]
         serverTarget = data["fstarget"]
         max_age = int(data["maxAge"])
+        jobid_vars: List[str] = self.config.getJobIdVars()
         # Filter out a group of received JobStats of different jobs
         jobstatLst = data["output"].split("job_stats:")
         # drop the first element because its always useless
@@ -248,7 +250,7 @@ class IOStatsListener(Process):
                     # Create new OSSDataObj
                     ossObj = OSSDataObj()
                     # if the id format is not compatible with "cluster_scheduler_ID" then it's a process id
-                    if '_' not in jobid:
+                    if not any([jobid.startswith(jobid_var) for jobid_var in jobid_vars]):
                         ossObj.procid = jobid
                     # Otherwise, it is a JOB
                     else:
