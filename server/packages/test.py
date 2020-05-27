@@ -844,20 +844,34 @@ update_data = [
 # finally:
 #     influxdb.close()
 
-from yaml import load, dump
-from pprint import pprint
-try:
-    from yaml import CLoader as Loader, CDumper as Dumper
-except ImportError:
-    from yaml import Loader, Dumper
+# from yaml import load, dump
+# from pprint import pprint
+# try:
+#     from yaml import CLoader as Loader, CDumper as Dumper
+# except ImportError:
+#     from yaml import Loader, Dumper
+#
+# with open("./jobstats_oss", 'r') as jobstatf:
+#     jobstats = jobstatf.read()
+#
+# jobstat_map = load(jobstats, Loader=Loader)
+#
+# pprint(jobstat_map)
+from threading import Thread
 
-with open("./jobstats_oss", 'r') as jobstatf:
-    jobstats = jobstatf.read()
+def myfunc(inp, result: list):
+    print("Inside Thread")
+    time.sleep(3.0)
+    result.append(f"Result is: {inp}")
 
-jobstat_map = load(jobstats, Loader=Loader)
+mydata = "misha"
+resp = []
+thr = Thread(target=myfunc, args=(mydata, resp,))
+thr.start()
+while thr.is_alive():
+    time.sleep(1.0)
 
-pprint(jobstat_map)
-
-
+print("Back from thread")
+print(resp[0])
 
 
