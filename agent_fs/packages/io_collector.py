@@ -74,6 +74,9 @@ class CollectIOstats(Thread):
 
                         # Put the jobStat output in thread safe Queue along with the fsname target
                         if jobstat_out.strip():
+                            logF = open(f"../util/dumps/{self.hostname}_{target}.dmp", 'a')
+                            logF.write(jobstat_out)
+                            logF.close()
                             self.jobstat_Q.put((target, jobstat_out))
                             # Clear JobStats logs immediately to free space
                             ##--self._clearJobStats(serverParam, target)
