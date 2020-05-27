@@ -7,6 +7,7 @@
 """
 from pika import PlainCredentials, ConnectionParameters, BlockingConnection, BasicProperties, exceptions
 from schedConfig import SchedConfig, ConfigReadExcetion
+from threading import Thread, Event
 from typing import Callable
 from enum import Enum
 
@@ -76,26 +77,46 @@ class SchedConnection:
     #
     # Handle incoming RPC Requests
     #
-    def __on_rpc_request(self, ch, method, props, body):
+    def __on_rpc_request(self, channel, method, props, body):
         # The Request content will be passed to the callback function and
         # the result will be sent back as the response to this RPC call
-        response = self.__rpc_callback_func(str(body.decode("utf-8")))
+        request = str(body.decode("utf-8"))
+        # Response will be put in this mutable list
+        response = []
+        # Keep the connection open for 30 Secs
+        timer = 30
+        event_thr = Event()
+        # Run the call_back function to make sure connection stays open until the results
+        # are ready or time is up
+        func_thr = Thread(target=self.__rpc_callback_func, args=(request, response, event_thr,))
+        func_thr.start()
+
+        while func_thr.is_alive():
+            # The connection stays open for no more than 30 Secs
+            if timer:
+                event_thr.set()
+            channel._connection.sleep(1.0)
+            timer -= 1
+
+        if not response:
+            response.append('NONE')
 
         # Send back the Response to RPC Client
-        self.__channel.basic_publish(
+        channel.basic_publish(
             exchange='',
             routing_key=props.reply_to,
             properties=BasicProperties(correlation_id=props.correlation_id),
-            body=str(response)
+            body=str(response[0])
         )
-        self.__channel.basic_ack(delivery_tag=method.delivery_tag)
+        channel.basic_ack(delivery_tag=method.delivery_tag)
 
     #
     # Start RPC Server and make it listening for RPC requests from client
     #   The 'callback' function will be defined later to receive a string input
-    #   as the request and process an String output as the response
+    #   as the request and and a list to return the result and process an String
+    #   output as the response
     #
-    def start_RPC_server(self, callback_func: Callable[[str], str]):
+    def start_RPC_server(self, callback_func: Callable[[str, list, 'Event'], None]):
         self.__rpc_callback_func = callback_func
         # sets up the consumer prefetch to only be delivered one message
         # at a time. The consumer must acknowledge this message before

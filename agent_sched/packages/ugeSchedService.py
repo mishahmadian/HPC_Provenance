@@ -9,13 +9,14 @@
 """
 from schedConfig import SchedConfig, ConfigReadExcetion
 from file_read_backwards import FileReadBackwards
+from threading import Event
 
 class UGEAccountingInfo:
     def __init__(self, config : SchedConfig):
         self.__accountingFilePath = config.getUGE_acct_file()
         self.__maxReadLine = config.getMaxReadLine()
 
-    def getAcctountingInfo(self, jobIdLst : list) -> list:
+    def getAcctountingInfo(self, jobIdLst : list, event: 'Event') -> list:
         acctList = []
         #The path to Accounting file should already be specified
         if not self.__accountingFilePath:
@@ -28,7 +29,7 @@ class UGEAccountingInfo:
             # in order to keep it efficient
             rec_counter = self.__maxReadLine
 
-            while jobIdLst and rec_counter:
+            while jobIdLst and rec_counter and (not event.is_set()):
                 # Write off the max count
                 rec_counter -= 1
                 try:

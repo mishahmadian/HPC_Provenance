@@ -162,7 +162,7 @@ class IOStatsListener(Process):
                 # The MDT target
                 mdsObj.mdt_target = serverTarget
                 # Extract job_id
-                jobid = jobstat['job_id']
+                jobid = str(jobstat['job_id'])
                 # If cluster_sched_jobid[.taskid] appears among the list of finished jobs,
                 # then ignore the Jobstats data of this job
                 if jobid in finished_jobIds[serverHost]:
@@ -225,7 +225,7 @@ class IOStatsListener(Process):
                 # The MDT target
                 ossObj.ost_target = serverTarget
                 # Extract job_id
-                jobid = jobstat['job_id']
+                jobid = str(jobstat['job_id'])
                 # If cluster_sched_jobid[.taskid] appears among the list of finished jobs,
                 # then ignore the Jobstats data of this job
                 if jobid in finished_jobIds[serverHost]:
