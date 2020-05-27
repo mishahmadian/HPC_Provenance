@@ -15,7 +15,7 @@
  Misha ahmadian (misha.ahmadian@ttu.edu)
 """
 
-from subprocess import check_output, STDOUT, CalledProcessError
+from subprocess import check_output, Popen, PIPE, STDOUT, CalledProcessError
 from Config import AgentConfig, ConfigReadExcetion
 from Communication import Producer, CommunicationExp
 from threading import Thread, Event
@@ -26,6 +26,7 @@ import socket
 import json
 import time
 import os
+from pprint import pprint
 
 #
 #  Defined a Class for collecting JobStats on MDS(s) and OSS(s)
@@ -74,9 +75,6 @@ class CollectIOstats(Thread):
 
                         # Put the jobStat output in thread safe Queue along with the fsname target
                         if jobstat_out.strip():
-                            logF = open("/opt/provenance/agent_fs/util/" + self.hostname +"_" + target + ".dmp", 'a')
-                            logF.write(jobstat_out)
-                            logF.close()
                             self.jobstat_Q.put((target, jobstat_out))
                             # Clear JobStats logs immediately to free space
                             ##--self._clearJobStats(serverParam, target)
@@ -192,6 +190,10 @@ class PublishIOstats(Thread):
                 # Convert Message body dictionary to JSON format
                 message_json = json.dumps(message_body)
 
+                logF = open("/opt/provenance/agent_fs/util/" + self.hostname + "_" + jobstat_msg[0] + ".dmp", 'a')
+                pprint(message_body, logF)
+                logF.close()
+
                 # Send the message to Server
                 try:
                     self.producer.send(message_json)
@@ -215,7 +217,7 @@ class PublishIOstats(Thread):
     @staticmethod
     def _getServerMemoryUsage():
         try:
-            out, err = subprocess.Popen(['free', '-t', '-m'], stdout=subprocess.PIPE).communicate()
+            out, err = Popen(['free', '-t', '-m'], stdout=PIPE).communicate()
             if not err and out:
                 return map(int, out.splitlines()[-1].split()[1:3])
             else:
