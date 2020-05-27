@@ -203,24 +203,26 @@ class Aggregator(Process):
                         # Ignore None hash IDs (i.e. Procs)
                         if uniq_id is None:
                             continue
-                        # if no data has been collected for this JonID_Cluster_SchedType,
-                        #  then create a ProvenanceObj and fill it
-                        with aggregatorLock:
-                            if not provenanceTbl.get(uniq_id, None):
-                                provenanceTbl[uniq_id] = provObjMngr.ProvenanceObj()
-                                # create an empty JobInfo object
-                                jobInfo = JobInfo()
-                                jobInfo.cluster = obj_Q.cluster
-                                jobInfo.sched_type = obj_Q.sched_type
-                                jobInfo.jobid = obj_Q.jobid
-                                jobInfo.taskid = (obj_Q.taskid if obj_Q.taskid else None)
-                                jobInfo.status = JobInfo.Status.NONE
-                                provenanceTbl._callmethod('__getitem__', (uniq_id,)).updateJobInfo(jobInfo)
+                        # Only create jobID for JOB data
+                        if obj_Q.jobid:
+                            # if no data has been collected for this JonID_Cluster_SchedType,
+                            #  then create a ProvenanceObj and fill it
+                            with aggregatorLock:
+                                if not provenanceTbl.get(uniq_id, None):
+                                    provenanceTbl[uniq_id] = provObjMngr.ProvenanceObj()
+                                    # create an empty JobInfo object
+                                    jobInfo = JobInfo()
+                                    jobInfo.cluster = obj_Q.cluster
+                                    jobInfo.sched_type = obj_Q.sched_type
+                                    jobInfo.jobid = obj_Q.jobid
+                                    jobInfo.taskid = (obj_Q.taskid if obj_Q.taskid else None)
+                                    jobInfo.status = JobInfo.Status.NONE
+                                    provenanceTbl._callmethod('__getitem__', (uniq_id,)).updateJobInfo(jobInfo)
 
-                                # Add a request in jobInfo_Q to get information from corresponding job scheduler
-                                job_info = '_'.join([obj_Q.cluster, obj_Q.sched_type, obj_Q.jobid +
-                                                     ("." + obj_Q.taskid if obj_Q.taskid else "")])
-                                jobInfo_Q.put(job_info)
+                                    # Add a request in jobInfo_Q to get information from corresponding job scheduler
+                                    job_info = '_'.join([obj_Q.cluster, obj_Q.sched_type, obj_Q.jobid +
+                                                         ("." + obj_Q.taskid if obj_Q.taskid else "")])
+                                    jobInfo_Q.put(job_info)
 
                         # Insert the corresponding object into its relevant list (sorted by timestamp)
                         # the _callmethod of Proxy class will take care of the complex object shared between processes

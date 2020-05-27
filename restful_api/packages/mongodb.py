@@ -205,6 +205,7 @@ class MongoDB:
                 u"samedir_rename": 1.0,
                 u"setattr": 1.0,
                 u"unlink": 1.0,
+                u"statfs": 1.0,
                 u"modified_time": 1.0,
                 u"job_info.jobid": 1.0,
                 u"job_info.taskid": 1.0,
@@ -239,7 +240,8 @@ class MongoDB:
                         u"$rmdir",
                         u"$samedir_rename",
                         u"$setattr",
-                        u"$unlink"
+                        u"$unlink",
+                        u"statfs"
                     ]
                 }
             }
@@ -481,6 +483,7 @@ class MongoDB:
                             u"samedir_rename": 1.0,
                             u"setattr": 1.0,
                             u"unlink": 1.0,
+                            u"statfs": 1.0,
                             u"file_op": 1.0
                         }
                     },
