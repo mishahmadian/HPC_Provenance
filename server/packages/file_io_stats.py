@@ -12,9 +12,9 @@
 from communication import ServerConnection, CommunicationExp
 from config import ServerConfig, ConfigReadExcetion
 from multiprocessing import Process, Queue, Event
+from yaml import Loader, load as yaml_load
 from exceptions import ProvenanceExitExp
 from persistant import FinishedJobs
-from yaml import load as yaml_load
 from typing import Dict, List, Set
 from logger import log, Mode
 import hashlib
@@ -22,11 +22,11 @@ import ctypes
 import json
 
 # Try to load the PyYaml if it's been compiled against LibYAML
-# which is more efficient
-try:
-    from yaml import CLoader as Yaml_Loader
-except ImportError:
-    from yaml import Loader as Yaml_Loader
+# which is more efficient (Looks like CLoader has a bug!)
+# try:
+#     from yaml import CLoader as Yaml_Loader
+# except ImportError:
+#     from yaml import Loader as Yaml_Loader
 
 #
 # This Class defines a new process which listens to the incoming port and collects
@@ -146,7 +146,7 @@ class IOStatsListener(Process):
         serverTarget = data["fstarget"]
         jobid_vars: List[str] = self.config.getJobIdVars()
         # Parse the received data which is in YAML format
-        parsed_data = yaml_load(data["output"], Loader=Yaml_Loader)
+        parsed_data = yaml_load(data["output"], Loader=Loader)
         # Proceed if data was parsed successfully
         if parsed_data and "job_stats" in parsed_data.keys():
             # Get the list of all job stats
@@ -209,7 +209,7 @@ class IOStatsListener(Process):
         serverTarget = data["fstarget"]
         jobid_vars: List[str] = self.config.getJobIdVars()
         # Parse the received data which is in YAML format
-        parsed_data = yaml_load(data["output"], Loader=Yaml_Loader)
+        parsed_data = yaml_load(data["output"], Loader=Loader)
         # Proceed if data was parsed successfully
         if parsed_data and "job_stats" in parsed_data.keys():
             # Get the list of all job stats
