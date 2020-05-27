@@ -203,13 +203,14 @@ class Aggregator(Process):
                         # Ignore None hash IDs (i.e. Procs)
                         if uniq_id is None:
                             continue
-                        # Only create jobID for JOB data
-                        if obj_Q.jobid:
-                            # if no data has been collected for this JonID_Cluster_SchedType,
-                            #  then create a ProvenanceObj and fill it
-                            with aggregatorLock:
-                                if not provenanceTbl.get(uniq_id, None):
-                                    provenanceTbl[uniq_id] = provObjMngr.ProvenanceObj()
+
+                        # if no data has been collected for this JonID_Cluster_SchedType,
+                        #  then create a ProvenanceObj and fill it
+                        with aggregatorLock:
+                            if not provenanceTbl.get(uniq_id, None):
+                                provenanceTbl[uniq_id] = provObjMngr.ProvenanceObj()
+                                # Only create jobID for JOB data
+                                if obj_Q.jobid:
                                     # create an empty JobInfo object
                                     jobInfo = JobInfo()
                                     jobInfo.cluster = obj_Q.cluster
