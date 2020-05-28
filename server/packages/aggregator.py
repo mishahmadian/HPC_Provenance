@@ -6,8 +6,8 @@
 
  Misha ahmadian (misha.ahmadian@ttu.edu)
 """
+from scheduler import JobScheduler, JobInfo, UGEJobInfo, JobSchedulerException
 from multiprocessing.managers import BaseManager, NamespaceProxy, DictProxy
-from scheduler import JobScheduler, JobInfo, JobSchedulerException
 from multiprocessing import Process, Event, Manager, Lock, Queue
 from config import ServerConfig, ConfigReadExcetion
 from threading import Event as Event_Thr, Thread
@@ -15,6 +15,7 @@ from file_io_stats import MDSDataObj, OSSDataObj
 from db_operations import MongoOPs, InfluxOPs
 from exceptions import ProvenanceExitExp
 from collections import defaultdict
+from persistant import FinishedJobs
 from typing import List, Dict, Set
 from file_op_logs import FileOpObj
 from bisect import bisect_left
@@ -284,10 +285,23 @@ class Aggregator(Process):
                     provenanceObj = provenanceTbl.get(uniq_id, None)
                     if not provenanceObj:
                         continue
-                    else:
-                        # If job_script is empty then try to get the job script for this job
-                        if not provenanceObj.jobInfo.job_script:
-                            jobInfo.job_script = jobScheduler.getJobScript(jobInfo)
+
+                    # If job_script is empty then try to get the job script for this job
+                    if not provenanceObj.jobInfo.job_script:
+                        jobInfo.job_script = jobScheduler.getJobScript(jobInfo)
+
+                    # In order to avoid keeping UNDEF JobInfos forever, we make sure they
+                    # do not stay in memory more than 5 times in a row
+                    if isinstance(provenanceObj.jobInfo, UGEJobInfo):
+                        if provenanceObj.jobInfo.undef_cnt >= 5:
+                            # If job has been stuck in UNDEF mode for 5 times in a row
+                            # then we should assume the job is FINISHED (or no more available)
+                            jobInfo.status = JobInfo.Status.FINISHED
+                            # The job has been finished and no more data should be aggregated for this job
+                            finishedJob = cluster + '_' + sched + '_' + str(jobid) + (
+                                "." + str(taskid) if taskid else "")
+                            finJobDB = FinishedJobs()
+                            finJobDB.add(finishedJob)
 
                     # Update the JobInfo for this record in the Provenance Table
                     provenanceTbl._callmethod('__getitem__', (uniq_id,)).updateJobInfo(jobInfo)

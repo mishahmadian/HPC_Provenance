@@ -221,6 +221,17 @@ class UGEJobInfo(JobInfo):
         self.wallclock = None
         self.failed_no = None
         self.q_del = []
+        self.undef_cnt = 0
+
+    # Override the JobInfo Superclass update method for UGEJobInfo
+    def update(self, jobinfo: 'JobInfo'):
+        super().update(jobinfo)
+        # Just add a counter for UNDEF status to avoid letting an ever-undef
+        # job to stuck in the memory of the Provenance server
+        if self.status == JobInfo.Status.UNDEF:
+            self.undef_cnt += 1
+        else:
+            self.undef_cnt = 0
 
 #
 # In any case of Error, Exception, or Mistake JobSchedulerException will be raised

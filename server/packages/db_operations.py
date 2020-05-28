@@ -67,6 +67,10 @@ class MongoOPs:
                                 pass
 
                         # -------------------------- Job Info ------------------------------
+                        if isinstance(jobinfo, UGEJobInfo):
+                            # do not store the undef_cnt attribute
+                            jobinfo_json.pop('undef_cnt')
+
                         # Insert/Update one job per document, Ignore JobInfos after the jobs is finished
                         update_query = {'uid' : uid, 'status': {"$ne": "FINISHED"}}
                         # # Ignore updating the DB for following status but still allowed to insert as a new doc
