@@ -194,11 +194,6 @@ class CollectIOstats(Process):
 
         # Convert Message body dictionary to JSON format
         message_json = json.dumps(message_body)
-        pprint(message_body)
-
-        logF = open("/opt/provenance/agent_fs/util/" + self.hostname + "_" + fstarget + ".dmp", 'a')
-        pprint(message_body, logF)
-        logF.close()
 
         # Send the message to Server
         try:
