@@ -84,7 +84,7 @@ class SchedConnection:
         # Response will be put in this mutable list
         response = []
         # Keep the connection open for 30 Secs
-        timer = 30
+        timer = 15
         event_thr = Event()
         # Run the call_back function to make sure connection stays open until the results
         # are ready or time is up
@@ -93,7 +93,7 @@ class SchedConnection:
 
         while func_thr.is_alive():
             # The connection stays open for no more than 30 Secs
-            if timer:
+            if not timer:
                 event_thr.set()
             channel._connection.sleep(1.0)
             timer -= 1
