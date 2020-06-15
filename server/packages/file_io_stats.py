@@ -45,6 +45,7 @@ class IOStatsListener(Process):
         try:
             self.__MDS_hosts = self.config.getMDS_hosts()
             self.__OSS_hosts = self.config.getOSS_hosts()
+            self._jobIdVars = self.config.getJobIdVars()
 
         except ConfigReadExcetion as confExp:
             log(Mode.FILE_IO_STATS, confExp.getMessage())
@@ -136,7 +137,7 @@ class IOStatsListener(Process):
     #
     # Convert/Map received data from MDS servers into a list of "MDSDataObj" data type
     #
-    def __parseIoStats_mds(self, data: Dict[str, str], finished_jobIds: dict) -> (Set, List):
+    def __parseIoStats_mds(self, data: Dict[str, str], finished_jobIds: Dict) -> (Set, List):
         # Create a List of MDSDataObj
         mdsObjLst: List[MDSDataObj] = []
         # Create a list for those jobs which will be blocked since they're already finished
@@ -144,7 +145,6 @@ class IOStatsListener(Process):
         timestamp = data["timestamp"]
         serverHost = data["server"]
         serverTarget = data["fstarget"]
-        jobid_vars: List[str] = self.config.getJobIdVars()
         # Parse the received data which is in YAML format
         parsed_data = yaml_load(data["output"], Loader=Loader)
         # Proceed if data was parsed successfully
@@ -170,7 +170,7 @@ class IOStatsListener(Process):
                     break
 
                 # if the id format is not compatible with "cluster_scheduler_ID" then it's a process id
-                if not any([jobid.startswith(jobid_var) for jobid_var in jobid_vars]):
+                if not any([jobid.startswith(jobid_var) for jobid_var in self._jobIdVars]):
                     mdsObj.procid = jobid
                 # Otherwise, it is a JOB
                 else:
@@ -199,7 +199,7 @@ class IOStatsListener(Process):
     #
     # Convert/Map received data from MDS servers into "OSSDataObj" data type
     #
-    def __parseIoStats_oss(self, data: Dict[str, str], finished_jobIds: dict) -> (Set, List):
+    def __parseIoStats_oss(self, data: Dict[str, str], finished_jobIds: Dict) -> (Set, List):
         # Create a List of OSSDataObj
         ossObjLst: List[OSSDataObj] = []
         # Create a list for those jobs which will be blocked since they're already finished
@@ -207,7 +207,6 @@ class IOStatsListener(Process):
         timestamp = data["timestamp"]
         serverHost = data["server"]
         serverTarget = data["fstarget"]
-        jobid_vars: List[str] = self.config.getJobIdVars()
         # Parse the received data which is in YAML format
         parsed_data = yaml_load(data["output"], Loader=Loader)
         # Proceed if data was parsed successfully
@@ -233,7 +232,7 @@ class IOStatsListener(Process):
                     break
 
                 # if the id format is not compatible with "cluster_scheduler_ID" then it's a process id
-                if not any([jobid.startswith(jobid_var) for jobid_var in jobid_vars]):
+                if not any([jobid.startswith(jobid_var) for jobid_var in self._jobIdVars]):
                     ossObj.procid = jobid
                 # Otherwise, it is a JOB
                 else:

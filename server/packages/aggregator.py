@@ -23,6 +23,7 @@ from logger import log, Mode
 from uge_service import UGE
 import subprocess
 import time
+import re
 
 #------ Global Variable ------
 # Timer Value
@@ -428,6 +429,7 @@ class ProvenanceObj(object):
         self.MDSDataObj_lst: List[MDSDataObj] = []
         self.OSSDataObj_lst: List[OSSDataObj] = []
         self.FileOpObj_lst: List[FileOpObj] = []
+        self.ignore_file_fids: Set[str] = set()
         self.__MDSDataObj_keys: List[float] = []
         self.__OSSDataObj_keys: List[float] = []
         self.__FileOpObj_keys: List[float] = []
@@ -456,6 +458,7 @@ class ProvenanceObj(object):
         elif isinstance(dataObj, FileOpObj):
             targetList = self.FileOpObj_lst
             keyList = self.__FileOpObj_keys
+            self._filter_and_ignore(dataObj)
         else:
             raise AggregatorException("[ProvenanceObj] Wrong instance of an object in the Queue")
 
@@ -547,6 +550,14 @@ class ProvenanceObj(object):
 
         # Return the table
         return ossObjTbl
+
+    #
+    # Add to the list of to-be-ignored files that may not need to be
+    # stored in the database
+    def _filter_and_ignore(self, fileObj):
+        if fileObj.target_file and re.match(r"^\.job_finished\.\d+", fileObj.target_file):
+            self.ignore_file_fids.add(fileObj.target_fid)
+
 
 
 #

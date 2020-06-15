@@ -36,10 +36,10 @@ class ServerConfig:
     # Validate the server.conf to ensure all the mandatory sections and options
     # are defined and correct
     def __validateConfig(self):
-        config = {'lustre' : ['mds_hosts', 'oss_hosts', 'mdt_targets', 'jobid_vars'],
+        config = {'lustre' : ['mds_hosts', 'oss_hosts', 'jobid_vars'],
                   'rabbitmq' : ['server', 'port', 'username', 'password', 'vhost'],
                   'io_listener' : ['exchange', 'queue'],
-                  'changelogs' : ['parallel','interval', 'users'],
+                  'changelogs' : ['files_ops', 'parallel','interval', 'mdt_targets', 'users'],
                   'aggregator' : ['interval'],
                   '*uge' : ['clusters', 'address', 'port', 'acct_interval', 'spool_dirs'],
                   'mongodb' : ['host', 'port', 'auth_mode', 'username', 'password', 'database'],
@@ -135,11 +135,6 @@ class ServerConfig:
 
     # ============= Public Methods =========================================
 
-    # Get a list of Lustre fsname(s) defined in Config file
-    #   Return: List
-    def getMdtTargets(self) -> list:
-        return self.__getConfigValue('lustre', 'mdt_targets', list)
-
     # Get a list of MDS host names defined in Config file
     #   Return: List
     def getMDS_hosts(self) -> list:
@@ -190,6 +185,11 @@ class ServerConfig:
     def getIOListener_Exch(self) -> str:
         return self.__getConfigValue('io_listener', 'exchange', str)
 
+    # Get the list of File Operations that have to be captured
+    # Return: List
+    def getChLogsFileOPs(self) -> list:
+        return self.__getConfigValue('changelogs', 'files_ops', list)
+
     # Get number of process that can be running in parallel to collect ChangeLogs
     # Return: Int
     def getChLogsPocnum(self) -> int:
@@ -199,6 +199,11 @@ class ServerConfig:
     # Return: Float
     def getChLogsIntv(self) -> float:
         return self.__getConfigValue('changelogs', 'interval', float)
+
+    # Get a list of Lustre fsname(s) defined in Config file
+    #   Return: List
+    def getMdtTargets(self) -> list:
+        return self.__getConfigValue('changelogs', 'mdt_targets', list)
 
     # Get the list of ChangeLogs users defined for each MDT
     # Return: List

@@ -358,7 +358,7 @@ class MongoDB:
         # Selects the collection of this database
         coll = self._mongoDB[self.Collections.FILE_OP_COLL.value]
         # Perform the Query
-        cursor = coll.aggregate(pipeline, allowDiskUse=False)
+        cursor = coll.aggregate(pipeline, allowDiskUse=True)
 
         return list(cursor)
 
@@ -570,7 +570,7 @@ class MongoDB:
         # Selects the collection of this database
         coll = self._mongoDB[self.Collections.JOB_INFO_COLL.value]
         # Perform the Query
-        cursor = coll.aggregate(pipeline, allowDiskUse=False)
+        cursor = coll.aggregate(pipeline, allowDiskUse=True)
 
         return list(cursor)
 

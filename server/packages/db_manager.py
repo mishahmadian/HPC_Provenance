@@ -8,8 +8,8 @@
  Misha Ahmadian (misha.ahmadian@ttu.edu)
 """
 from influxdb.exceptions import InfluxDBClientError, InfluxDBServerError
-from pymongo import MongoClient, IndexModel, TEXT, ASCENDING
-from pymongo.errors import PyMongoError, DuplicateKeyError
+from pymongo import MongoClient, IndexModel, ASCENDING, DESCENDING
+from pymongo.errors import PyMongoError, DuplicateKeyError, DocumentTooLarge
 from config import ServerConfig, ConfigReadExcetion
 from typing import Union, Dict, List
 from influxdb import InfluxDBClient
@@ -66,7 +66,7 @@ class MongoDB:
                 # Create Index for JobInfo
                 if collection.value == "jobinfo":
                     # Define the Index(es)
-                    uid_uniq_inx = IndexModel([("uid", TEXT), ("jobid", ASCENDING)],
+                    uid_uniq_inx = IndexModel([("uid", ASCENDING), ("jobid", DESCENDING)],
                                               name="jobinfo_uid_uniq_inx", unique=True)
                     # Add/Create indexes
                     coll.create_indexes([uid_uniq_inx])
@@ -74,7 +74,7 @@ class MongoDB:
                 # Create Index for JobInfo
                 elif collection.value == "jobscript":
                     # Define the Index(es)
-                    jobscript_uniq_inx = IndexModel([("jobid", TEXT), ("cluster", ASCENDING)],
+                    jobscript_uniq_inx = IndexModel([("jobid", DESCENDING), ("cluster", ASCENDING)],
                                               name="jobscript_uid_uniq_inx", unique=True)
                     # Add/Create indexes
                     coll.create_indexes([jobscript_uniq_inx])
@@ -82,7 +82,11 @@ class MongoDB:
                 # Create Index for MDS DB
                 elif collection.value == 'mds_stats':
                     # Index the uid only
-                    mds_uid_inx = IndexModel([("uid", TEXT), ("mds_host", ASCENDING), ("mdt_target", ASCENDING)],
+                    mds_uid_inx = IndexModel([("uid", ASCENDING),
+                                              ("mds_info.mds_host", ASCENDING),
+                                              ("mds_info.mdt_target", ASCENDING),
+                                              ("status", ASCENDING),
+                                              ("username", ASCENDING)],
                                              name="mds_uid_inx")
                     # Add/Create Index
                     coll.create_indexes([mds_uid_inx])
@@ -90,7 +94,11 @@ class MongoDB:
                 # Create Index for OSS DB
                 elif collection.value == 'oss_stats':
                     # Index the uid only
-                    oss_uid_inx = IndexModel([("uid", TEXT), ("oss_host", ASCENDING), ("ost_target", ASCENDING)],
+                    oss_uid_inx = IndexModel([("uid", ASCENDING),
+                                              ("oss_info.oss_host", ASCENDING),
+                                              ("oss_info.ost_target", ASCENDING),
+                                              ("status", ASCENDING),
+                                              ("username", ASCENDING)],
                                              name="oss_uid_inx")
                     # Add/Create Index
                     coll.create_indexes([oss_uid_inx])
@@ -98,7 +106,8 @@ class MongoDB:
                 # Create Index for FileOP DB
                 elif collection.value == 'file_op':
                     # Index the uid only
-                    fileop_uid_inx = IndexModel([("uid", TEXT)], name="fileop_uid_inx")
+                    fileop_uid_inx = IndexModel([("uid", ASCENDING), ("target_fid", ASCENDING)],
+                                                name="fileop_uid_inx")
                     # Add/Create Index
                     coll.create_indexes([fileop_uid_inx])
 
@@ -152,7 +161,7 @@ class MongoDB:
     # Main Update Method for MongoDB
     #
     def update(self, collection: 'MongoDB.Collections', doc_query: Dict, data: Union[Dict, List],
-               runcommand: bool = False, update_many: bool = False, upsert: bool = True) -> int:
+               runcommand: bool = False, update_many: bool = False, upsert: bool = True) -> 'MongoDB.Result':
         """
         Update a document selected by doc_query with new data
 
@@ -199,24 +208,24 @@ class MongoDB:
                 # Otherwise, update using the collection update command
                 else:
                     # Update the Data
-                    if isinstance(data, dict) and data.get("$set", None):
-                        update_data = data
-                    else:
-                        update_data = {"$set": data}
+                    # if isinstance(data, dict) and data.get("$set", None):
+                    #     update_data = data
+                    # else:
+                    #     update_data = {"$set": data}
 
-                    result = coll.update(doc_query, update_data, upsert=upsert, multi=update_many)
+                    result = coll.update(doc_query, data, upsert=upsert, multi=update_many)
 
                 # Return the update success
-                if result['nModified'] > 0:
-                    return 2
+                if result.get('nModified', 0) > 0:
+                    return MongoDB.Result.MODIFIED
                 elif result.get('upserted', None):
-                    return 1
+                    return MongoDB.Result.INSERTED
                 elif result.get('writeErrors', None):
-                    return -1
+                    return MongoDB.Result.ERROR
                 else:
-                    return 0
+                    return MongoDB.Result.NO_CHANGE
             else:
-                return -2
+                return MongoDB.Result.MISSING_PARAM
 
         except DuplicateKeyError as dupExp:
             raise dupExp
@@ -291,6 +300,19 @@ class MongoDB:
         MDS_STATS_COLL = 'mds_stats'
         OSS_STATS_COLL = 'oss_stats'
         FILE_OP_COLL = 'file_op'
+
+
+    @unique
+    class Result(Enum):
+        """
+            The Result status of the Update/Insert operations
+        """
+        MISSING_PARAM = -2
+        ERROR = -1
+        NO_CHANGE = 0
+        INSERTED = 1
+        MODIFIED = 2
+
 
 #------------------------------------
 #          InfluxDB
