@@ -7,6 +7,7 @@
 """
 from api_config import Config, ConfigReadExcetion
 from provenance_jobinfo_api import JobInfo
+from provenance_jobscript import JobScript
 from provenance_oss_api import OSSapi
 from provenance_mds_api import MDSapi
 from gevent.pywsgi import WSGIServer
@@ -18,7 +19,7 @@ import json
 # Create an API app
 api_app = Flask(__name__)
 # To allow flask propagating exception even if debug is set to false on app
-api_app.config['PROPAGATE_EXCEPTIONS'] = False
+api_app.config['PROPAGATE_EXCEPTIONS'] = True
 # Create RESTful API
 rest_api = Api(api_app)
 # Get Configuration object
@@ -70,9 +71,13 @@ if __name__ == '__main__':
                           "/provenance/jobinfo",
                           "/provenance/jobinfo/<string:uid>")
 
+    # RestAPI for Job Submission Script
+    rest_api.add_resource(JobScript,
+                          "/provenance/jobscript/<string:cluster>/<string:jobid>")
+
     # Setup the API Server
-    #api_app.run(port=5000, host="0.0.0.0", debug=True)
-    api_server = WSGIServer(('', config.getApiPort()), api_app, )
+    api_app.run(port=5000, host="0.0.0.0", debug=True)
+    #api_server = WSGIServer(('', config.getApiPort()), api_app, )
     # Start API Server
-    api_server.serve_forever()
+    #api_server.serve_forever()
 

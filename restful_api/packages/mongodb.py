@@ -51,7 +51,7 @@ class MongoDB:
 
 
     def query_oss_jobs(self, oss_resource, ost_target=None, uid=None, jobstatus=None,
-                       sort_param=None, days=None) -> List[Dict]:
+                       sort_param=None, days=None, username=None) -> List[Dict]:
         """
             Aggregate the OSS/OST data with their corresponding jobs
         :return:
@@ -60,68 +60,71 @@ class MongoDB:
         # Filter oss data
         filter_oss = {
             u"$match": {
-                u"oss_host": oss_resource
+                u"oss_info.oss_host": oss_resource,
+                u"status": u"RUNNING"
             }
         }
-        if ost_target:
-            filter_oss[u"$match"].update({u"ost_target" : ost_target})
+
         if uid:
             filter_oss[u"$match"].update({u"uid": uid})
+        if ost_target:
+            filter_oss[u"$match"].update({u"oss_info.ost_target": ost_target})
+        if jobstatus:
+            filter_oss[u"$match"].update({u"status": jobstatus})
+        if username:
+            filter_oss[u"$match"].update({u"username": username})
         if days:
             filter_oss[u"$match"].update({"create_time": {
                 "$gte": datetime.now() - timedelta(days=days)
             }})
 
-        # JOIN OSS_STATS with JobInfo collection
-        join = {
-            u"$lookup": {
-                u"from": u"jobinfo",
-                u"localField": u"uid",
-                u"foreignField": u"uid",
-                u"as": u"job_info"
+        ossinfo_expand = {
+            u"$unwind": {
+                u"path": u"$oss_info",
+                u"preserveNullAndEmptyArrays": False
             }
         }
+
+        filter_ossinfo = {
+            u"$match": {
+                u"oss_info.oss_host": oss_resource
+            }
+        }
+
+        if ost_target:
+            filter_ossinfo[u"$match"].update({u"oss_info.ost_target" : ost_target})
 
         # Select the Output Results
         projection = {
             u"$project": {
                 u"_id": 0.0,
-                u"oss_host": 1.0,
-                u"ost_target": 1.0,
                 u"uid": 1.0,
                 u"jobid": 1.0,
-                u"read_bytes": 1.0,
-                u"read_bytes_max": 1.0,
-                u"read_bytes_min": 1.0,
-                u"read_bytes_sum": 1.0,
-                u"write_bytes": 1.0,
-                u"write_bytes_max": 1.0,
-                u"write_bytes_min": 1.0,
-                u"write_bytes_sum": 1.0,
-                u"modified_time": 1.0,
-                u"job_info.jobid": 1.0,
-                u"job_info.taskid": 1.0,
-                u"job_info.status": 1.0,
-                u"job_info.username": 1.0,
-                u"job_info.start_time": 1.0
+                u"taskid": 1.0,
+                u"cluster": 1.0,
+                u"status": 1.0,
+                u"username": 1.0,
+                u"oss_info.oss_host": 1.0,
+                u"oss_info.ost_target": 1.0,
+                u"oss_info.read_bytes": 1.0,
+                u"oss_info.read_bytes_max": 1.0,
+                u"oss_info.read_bytes_min": 1.0,
+                u"oss_info.read_bytes_sum": 1.0,
+                u"oss_info.write_bytes": 1.0,
+                u"oss_info.write_bytes_max": 1.0,
+                u"oss_info.write_bytes_min": 1.0,
+                u"oss_info.write_bytes_sum": 1.0,
+                u"oss_info.modified_time": 1.0
             }
         }
-        # Filter based on JobInfo
-        filter_jobs = {
-            u"$match": {
-                u"job_info.status": u"RUNNING"
-            }
-        }
-        if jobstatus:
-            filter_jobs[u"$match"].update({u"job_info.status": jobstatus})
 
         # Find the Field that has the highest activity on OSS
         highest_activity = {
             u"$addFields": {
                 u"highest_ops": {
                     u"$max": [
-                        u"$read_bytes",
-                        u"$write_bytes"
+                        u"$oss_info.read_bytes",
+                        u"$oss_info.write_bytes"
                     ]
                 }
             }
@@ -134,16 +137,16 @@ class MongoDB:
 
         if sort_param:
             if sort_param in projection.get("$project").keys():
-                sort.update({u"$sort": SON([(u"sort_param", -1)])})
+                sort.update({u"$sort": SON([(sort_param, -1)])})
 
-            elif f"job_info.{sort_param}" in projection.get("$project").keys():
-                sort.update({u"$sort": SON([(f"job_info.{sort_param}", -1)])})
+            elif f"oss_info.{sort_param}" in projection.get("$project").keys():
+                sort.update({u"$sort": SON([(f"oss_info.{sort_param}", -1)])})
 
             else:
                 return [{"error" : "The Sort parameter is not applicable"}]
 
         # ---------- Generating Aggregation Pipeline ------------
-        pipeline = [filter_oss, join, projection, filter_jobs, highest_activity, sort]
+        pipeline = [filter_oss, ossinfo_expand, filter_ossinfo, projection, highest_activity, sort]
 
         # Selects the collection of this database
         coll = self._mongoDB[self.Collections.OSS_STATS_COLL.value]
@@ -154,7 +157,7 @@ class MongoDB:
 
 
     def query_mds_jobs(self, mds_resource, mdt_target=None, uid=None, jobstatus=None,
-                       sort_param=None, days=None) -> List[Dict]:
+                       sort_param=None, days=None, username=None) -> List[Dict]:
         """
             Aggregate the MDS/MDT data with their corresponding jobs
         :return:
@@ -163,85 +166,87 @@ class MongoDB:
         # Filter MDS data
         filter_mds = {
             u"$match": {
-                u"mds_host": mds_resource
+                u"mds_info.mds_host": mds_resource,
+                u"status": u"RUNNING"
             }
         }
-        if mdt_target:
-            filter_mds[u"$match"].update({u"mdt_target": mdt_target})
+
         if uid:
             filter_mds[u"$match"].update({u"uid": uid})
+        if mdt_target:
+            filter_mds[u"$match"].update({u"mds_info.mdt_target": mdt_target})
+        if jobstatus:
+            filter_mds[u"$match"].update({u"status": jobstatus})
+        if username:
+            filter_mds[u"$match"].update({u"username": username})
         if days:
             filter_mds[u"$match"].update({"create_time": {
                 "$gte": datetime.now() - timedelta(days=days)
             }})
 
-        # JOIN MDS_STATS with JobInfo collection
-        join = {
-            u"$lookup": {
-                u"from": u"jobinfo",
-                u"localField": u"uid",
-                u"foreignField": u"uid",
-                u"as": u"job_info"
+        mdsinfo_expand = {
+            u"$unwind": {
+                u"path": u"$mds_info",
+                u"preserveNullAndEmptyArrays": False
             }
         }
+
+        filter_mdsinfo = {
+            u"$match": {
+                u"mds_info.mds_host": mds_resource
+            }
+        }
+
+        if mdt_target:
+            filter_mdsinfo[u"$match"].update({u"mds_info.mdt_target" : mdt_target})
 
         # Select the Output Fields
         projection = {
             u"$project": {
                 u"_id": 0.0,
-                u"mds_host": 1.0,
-                u"mdt_target": 1.0,
                 u"uid": 1.0,
-                u"close": 1.0,
-                u"crossdir_rename": 1.0,
-                u"getattr": 1.0,
                 u"jobid": 1.0,
-                u"link": 1.0,
-                u"mkdir": 1.0,
-                u"mknod": 1.0,
-                u"open": 1.0,
-                u"rename": 1.0,
-                u"rmdir": 1.0,
-                u"samedir_rename": 1.0,
-                u"setattr": 1.0,
-                u"unlink": 1.0,
-                u"statfs": 1.0,
-                u"modified_time": 1.0,
-                u"job_info.jobid": 1.0,
-                u"job_info.taskid": 1.0,
-                u"job_info.status": 1.0,
-                u"job_info.username": 1.0,
-                u"job_info.start_time": 1.0
+                u"taskid": 1.0,
+                u"cluster": 1.0,
+                u"status": 1.0,
+                u"username": 1.0,
+                u"mds_info.mds_host": 1.0,
+                u"mds_info.mdt_target": 1.0,
+                u"mds_info.close": 1.0,
+                u"mds_info.crossdir_rename": 1.0,
+                u"mds_info.getattr": 1.0,
+                u"mds_info.link": 1.0,
+                u"mds_info.mkdir": 1.0,
+                u"mds_info.mknod": 1.0,
+                u"mds_info.open": 1.0,
+                u"mds_info.rename": 1.0,
+                u"mds_info.rmdir": 1.0,
+                u"mds_info.samedir_rename": 1.0,
+                u"mds_info.setattr": 1.0,
+                u"mds_info.unlink": 1.0,
+                u"mds_info.statfs": 1.0,
+                u"mds_info.modified_time": 1.0,
             }
         }
-
-        # Filter based on JobInfo
-        filter_jobs = {
-            u"$match": {
-                u"job_info.status": u"RUNNING"
-            }
-        }
-        if jobstatus:
-            filter_jobs[u"$match"].update({u"job_info.status": jobstatus})
 
         # Find the Field that has the highest activity on MDS
         highest_activity = {
             u"$addFields": {
                 u"highest_activity": {
                     u"$max": [
-                        u"$open",
-                        u"$close",
-                        u"$crossdir_rename",
-                        u"$getattr",
-                        u"$link",
-                        u"$mkdir",
-                        u"$mknod",
-                        u"$rename",
-                        u"$rmdir",
-                        u"$samedir_rename",
-                        u"$setattr",
-                        u"$unlink",
-                        u"statfs"
+                        u"$mds_info.open",
+                        u"$mds_info.close",
+                        u"$mds_info.crossdir_rename",
+                        u"$mds_info.getattr",
+                        u"$mds_info.link",
+                        u"$mds_info.mkdir",
+                        u"$mds_info.mknod",
+                        u"$mds_info.rename",
+                        u"$mds_info.rmdir",
+                        u"$mds_info.samedir_rename",
+                        u"$mds_info.setattr",
+                        u"$mds_info.unlink",
+                        u"$mds_info.statfs"
                     ]
                 }
             }
@@ -254,17 +259,17 @@ class MongoDB:
 
         if sort_param:
             if sort_param in projection.get("$project").keys():
-                sort.update({u"$sort" : SON([(u"sort_param", -1)])})
+                sort.update({u"$sort" : SON([(sort_param, -1)])})
 
-            elif f"job_info.{sort_param}" in projection.get("$project").keys():
-                sort.update({u"$sort": SON([(f"job_info.{sort_param}", -1)])})
+            elif f"oss_info.{sort_param}" in projection.get("$project").keys():
+                sort.update({u"$sort": SON([(f"oss_info.{sort_param}", -1)])})
 
             else:
                 return [{"error" : "The Sort parameter is not applicable"}]
 
 
         # ---------- Generating Aggregation Pipeline ------------
-        pipeline = [filter_mds, join, projection, filter_jobs, highest_activity, sort]
+        pipeline = [filter_mds, mdsinfo_expand, filter_mdsinfo, projection, highest_activity, sort]
 
         # Selects the collection of this database
         coll = self._mongoDB[self.Collections.MDS_STATS_COLL.value]
@@ -274,33 +279,79 @@ class MongoDB:
         return list(cursor)
 
 
-    def query_fileop_mds(self, mdt_target , uid=None, jobstatus=None, sort_param=None, days=None) -> List[Dict]:
+    def query_fileop_mds(self, mdt_target , uid=None, jobstatus=None, sort_param=None,
+                         days=None, username=None) -> List[Dict]:
         """
             Get File Operations for jobs on each MDT
         :return:
         """
         # ---------- Creating Aggregation query ------------
         # Filter fileOPs data
-        filter_fileops = {
+        filter_jobs = {
             u"$match": {
-                u"mdtTarget": mdt_target
+                u"status": u"RUNNING"
             }
         }
 
         if uid:
-            filter_fileops[u"$match"].update({u"uid": uid})
-        if days:
-            filter_fileops[u"$match"].update({"create_time": {
-                "$gte": datetime.now() - timedelta(days=days)
-            }})
+            filter_jobs[u"$match"].update({u"uid": uid})
+        if jobstatus:
+            filter_jobs[u"$match"].update({u"status": jobstatus})
+        if username:
+            filter_jobs[u"$match"].update({u"username": username})
 
         # JOIN FILE_OP with JobInfo collection
-        join = {
-        u"$lookup": {
-                u"from": u"jobinfo",
-                u"localField": u"uid",
-                u"foreignField": u"uid",
-                u"as": u"job_info"
+        join_fileop = {
+            u"$lookup": {
+                u"from": u"file_op",
+                u"let": {
+                    u"j_uid": u"$uid",
+                    u"mdt": mdt_target
+                },
+                u"pipeline": [
+                    {
+                        u"$match": {
+                            u"$expr": {
+                                u"$and": [
+                                    { u"$eq": [ u"$uid", u"$$j_uid" ] },
+                                    { u"$eq": [ u"$mdtTarget", u"$$mdt" ] }
+                                ]
+                            }
+                        }
+                    },
+                    {
+                        u"$project": {
+                            u"_id": 0.0,
+                            u"mdtTarget": 1.0,
+                            u"nid": 1.0,
+                            u"target_path": 1.0,
+                            u"target_file": 1.0,
+                            u"parent_path": 1.0,
+                            u"file_ops": 1.0,
+                            u"create_time": 1.0
+                        }
+                    }
+                ],
+                u"as": u"fileop_info"
+            }
+        }
+
+        if days:
+            join_fileop[u"$lookup"][u"pipeline"][0][u"$match"][u"$expr"][u"$and"].append(
+                { u"$gte": ["$create_time", datetime.now() - timedelta(days=days)] }
+            )
+
+        fileop_info_expand = {
+            u"$unwind": {
+                u"path": u"$fileop_info",
+                u"preserveNullAndEmptyArrays": False
+            }
+        }
+
+        fileop_expand = {
+            u"$unwind": {
+                u"path": u"$fileop_info.file_ops",
+                u"preserveNullAndEmptyArrays": False
             }
         }
 
@@ -308,62 +359,41 @@ class MongoDB:
         projection = {
             u"$project": {
                 u"_id": 0.0,
-                u"jobid": 1.0,
-                u"mdtTarget": 1.0,
-                u"nid": 1.0,
-                u"op_type": 1.0,
-                u"open_mode": 1.0,
-                u"parent_path": 1.0,
-                u"target_file": 1.0,
-                u"target_path": 1.0,
-                u"taskid": 1.0,
-                u"timestamp": 1.0,
                 u"uid": 1.0,
-                u"job_info.jobid": 1.0,
-                u"job_info.taskid": 1.0,
-                u"job_info.status": 1.0,
-                u"job_info.username": 1.0,
-                u"job_info.start_time": 1.0
+                u"jobid": 1.0,
+                u"taskid": 1.0,
+                u"cluster": 1.0,
+                u"status": 1.0,
+                u"username": 1.0,
+                u"fileop_info": 1.0,
             }
         }
-
-        # Filter based on JobInfo
-        filter_jobs = {
-            u"$match": {
-                u"job_info.status": u"RUNNING"
-            }
-        }
-        if jobstatus:
-            filter_jobs[u"$match"].update({u"job_info.status": jobstatus})
 
         # SORT Output Results
         sort = {
-            u"$sort": SON([(u"timestamp", -1)])
+            u"$sort": SON([ (u"fileop_info.file_ops.timestamp", -1) ])
         }
 
         if sort_param:
             if sort_param in projection.get("$project").keys():
-                sort.update({u"$sort" : SON([(u"sort_param", -1)])})
-
-            elif f"job_info.{sort_param}" in projection.get("$project").keys():
-                sort.update({u"$sort": SON([(f"job_info.{sort_param}", -1)])})
+                sort.update({u"$sort" : SON([(sort_param, -1)])})
 
             else:
                 return [{"error" : "The Sort parameter is not applicable"}]
 
 
         # ---------- Generating Aggregation Pipeline ------------
-        pipeline = [filter_fileops, join, projection, filter_jobs, sort]
+        pipeline = [filter_jobs, join_fileop, fileop_info_expand, fileop_expand, projection, sort]
 
         # Selects the collection of this database
-        coll = self._mongoDB[self.Collections.FILE_OP_COLL.value]
+        coll = self._mongoDB[self.Collections.JOB_INFO_COLL.value]
         # Perform the Query
         cursor = coll.aggregate(pipeline, allowDiskUse=True)
 
         return list(cursor)
 
 
-    def query_jobinfo_all(self, jobstatus=None, sort_param=None, days=None) -> List[Dict]:
+    def query_jobinfo_all(self, jobstatus=None, sort_param=None, days=None, username=None) -> List[Dict]:
         """
             Get File Operations for jobs on each MDT
         :return:
@@ -372,6 +402,8 @@ class MongoDB:
         query = {"status": "RUNNING"}
         if jobstatus:
             query.update({"status": jobstatus})
+        if username:
+            query.update({u"username": username})
         if days:
             query.update({"create_time": {
                 "$gte": datetime.now() - timedelta(days=days)
@@ -420,76 +452,51 @@ class MongoDB:
             }
         }
 
-        join_mds_fileop = {
+        join_mds = {
             u"$lookup": {
                 u"from": u"mds_stats",
-                u"let": { u"j_uid": u"$uid" },
+                u"let": {
+                    u"j_uid": u"$uid"
+                },
                 u"pipeline": [
-                    { u"$match": {
+                    {
+                        u"$match": {
                             u"$expr": {
                                 u"$eq": [ u"$uid", u"$$j_uid" ]
                             }
                         }
                     },
-                    { u"$lookup": {
-                            u"from": u"file_op",
-                            u"let": {
-                                u"mds_uid": u"$uid",
-                                u"mdt": u"$mdt_target"
-                            },
-                            u"pipeline": [
-                                { u"$match": {
-                                        u"$expr": {
-                                            u"$and": [
-                                                { u"$eq": [ u"$uid", u"$$mds_uid" ] },
-                                                { u"$eq": [ u"$mdtTarget", u"$$mdt" ] }
-                                            ]
-                                        }
-                                    }
-                                },
-                                { u"$project": {
-                                        u"_id": 0.0,
-                                        u"mdtTarget": 1.0,
-                                        u"nid": 1.0,
-                                        u"op_type": 1.0,
-                                        u"open_mode": 1.0,
-                                        u"parent_path": 1.0,
-                                        u"target_file": 1.0,
-                                        u"target_path": 1.0,
-                                        u"timestamp": 1.0
-                                    }
-                                },
-                                { u"$sort": {
-                                        u"timestamp": -1.0
-                                    }
-                                }
-                            ],
-                            u"as": u"file_op"
-                        }
-                    },
-                    { u"$project": {
+                    {
+                        u"$project": {
                             u"_id": 0.0,
-                            u"mds_host": 1.0,
-                            u"mdt_target": 1.0,
-                            u"close": 1.0,
-                            u"crossdir_rename": 1.0,
-                            u"getattr": 1.0,
-                            u"link": 1.0,
-                            u"mkdir": 1.0,
-                            u"mknod": 1.0,
-                            u"open": 1.0,
-                            u"rename": 1.0,
-                            u"rmdir": 1.0,
-                            u"samedir_rename": 1.0,
-                            u"setattr": 1.0,
-                            u"unlink": 1.0,
-                            u"statfs": 1.0,
-                            u"file_op": 1.0
+                            u"mds_info.mds_host": 1.0,
+                            u"mds_info.mdt_target": 1.0,
+                            u"mds_info.close": 1.0,
+                            u"mds_info.crossdir_rename": 1.0,
+                            u"mds_info.getattr": 1.0,
+                            u"mds_info.link": 1.0,
+                            u"mds_info.mkdir": 1.0,
+                            u"mds_info.mknod": 1.0,
+                            u"mds_info.open": 1.0,
+                            u"mds_info.rename": 1.0,
+                            u"mds_info.rmdir": 1.0,
+                            u"mds_info.samedir_rename": 1.0,
+                            u"mds_info.setattr": 1.0,
+                            u"mds_info.unlink": 1.0,
+                            u"mds_info.statfs": 1.0,
+                            u"mds_info.modified_time": 1.0,
                         }
                     },
-                    { u"$sort": {
-                            u"mds_host": 1.0,
-                            u"mdt_target": 1.0
+                    {
+                        u"$unwind": {
+                            u"path": u"$mds_info",
+                            u"preserveNullAndEmptyArrays": False
+                        }
+                    },
+                    {
+                        u"$sort": {
+                            u"mds_info.mds_host": 1.0,
+                            u"mds_info.mdt_target": 1.0
                         }
                     }
                 ],
@@ -504,33 +511,91 @@ class MongoDB:
                     u"j_uid": u"$uid"
                 },
                 u"pipeline": [
-                    {u"$match": {
+                    {
+                        u"$match": {
                             u"$expr": {
-                                u"$eq": [ u"$uid", u"$$j_uid" ]
+                                u"$eq": [
+                                    u"$uid",
+                                    u"$$j_uid"
+                                ]
                             }
                         }
                     },
-                    { u"$project": {
-                        u"_id": 0.0,
-                        u"oss_host": 1.0,
-                        u"ost_target": 1.0,
-                        u"read_bytes": 1.0,
-                        u"read_bytes_max": 1.0,
-                        u"read_bytes_min": 1.0,
-                        u"read_bytes_sum": 1.0,
-                        u"write_bytes": 1.0,
-                        u"write_bytes_max": 1.0,
-                        u"write_bytes_min": 1.0,
-                        u"write_bytes_sum": 1.0
+                    {
+                        u"$project": {
+                            u"_id": 0.0,
+                            u"oss_info.oss_host": 1.0,
+                            u"oss_info.ost_target": 1.0,
+                            u"oss_info.read_bytes": 1.0,
+                            u"oss_info.read_bytes_max": 1.0,
+                            u"oss_info.read_bytes_min": 1.0,
+                            u"oss_info.read_bytes_sum": 1.0,
+                            u"oss_info.write_bytes": 1.0,
+                            u"oss_info.write_bytes_max": 1.0,
+                            u"oss_info.write_bytes_min": 1.0,
+                            u"oss_info.write_bytes_sum": 1.0,
+                            u"oss_info.modified_time": 1.0,
                         }
                     },
-                    { u"$sort": {
-                            u"oss_host": 1.0,
-                            u"ost_target": 1.0
+                    {
+                        u"$unwind": {
+                            u"path": u"$oss_info",
+                            u"preserveNullAndEmptyArrays": False
+                        }
+                    },
+                    {
+                        u"$sort": {
+                            u"oss_info.oss_host": 1.0,
+                            u"oss_info.ost_target": 1.0
                         }
                     }
                 ],
                 u"as": u"oss_data"
+            }
+        }
+
+        join_fileop = {
+            u"$lookup": {
+                u"from": u"file_op",
+                u"let": {
+                    u"j_uid": u"$uid"
+                },
+                u"pipeline": [
+                    {
+                        u"$match": {
+                            u"$expr": {
+                                u"$eq": [
+                                    u"$uid",
+                                    u"$$j_uid"
+                                ]
+                            }
+                        }
+                    },
+                    {
+                        u"$project": {
+                            u"_id": 0.0,
+                            u"mdtTarget": 1.0,
+                            u"nid": 1.0,
+                            u"target_path": 1.0,
+                            u"target_file": 1.0,
+                            u"parent_path": 1.0,
+                            u"file_ops": 1.0,
+                            #u"create_time": 1.0
+                        }
+                    },
+                    {
+                        u"$unwind": {
+                            u"path": u"$file_ops",
+                            u"preserveNullAndEmptyArrays": False
+                        }
+                    },
+                    {
+                        u"$sort": {
+                            u"file_ops.timestamp": -1.0
+                        }
+                    }
+                ],
+                u"as": u"fileop_data"
             }
         }
 
@@ -545,7 +610,7 @@ class MongoDB:
                 u"h_rt": 1.0,
                 u"h_vmem": 1.0,
                 u"modified_time": 1.0,
-                u"num_cpu": 1.0,
+                u"num_cp": 1.0,
                 u"parallelEnv": 1.0,
                 u"project": 1.0,
                 u"q_del": 1.0,
@@ -559,13 +624,14 @@ class MongoDB:
                 u"jobName": 1.0,
                 u"pwd": 1.0,
                 u"username": 1.0,
+                u"mds_data": 1.0,
                 u"oss_data": 1.0,
-                u"mds_data": 1.0
+                u"fileop_data": 1.0
             }
         }
 
         # ---------- Generating Aggregation Pipeline ------------
-        pipeline = [jobInfo_query, join_mds_fileop, join_oss, projection]
+        pipeline = [jobInfo_query, join_mds, join_oss, join_fileop, projection]
 
         # Selects the collection of this database
         coll = self._mongoDB[self.Collections.JOB_INFO_COLL.value]
@@ -574,7 +640,19 @@ class MongoDB:
 
         return list(cursor)
 
-#
+
+    def query_jobscript(self, cluster, jobid) -> Dict:
+        """
+            Get the Job Submission script of the Job
+        :return:
+        """
+        # Selects the collection of this database
+        coll = self._mongoDB[self.Collections.JOB_SCRIPT_COLL.value]
+        # Perform the Query
+        ret_data = coll.find_one({"cluster": cluster, "jobid": jobid})
+        return ret_data
+
+    #
     # MongoDB Collection Enum
     #
     @unique
@@ -583,6 +661,7 @@ class MongoDB:
             The available collections for this MondoDB are defined in this Enum class
         """
         JOB_INFO_COLL = 'jobinfo'
+        JOB_SCRIPT_COLL = 'jobscript'
         MDS_STATS_COLL = 'mds_stats'
         OSS_STATS_COLL = 'oss_stats'
         FILE_OP_COLL = 'file_op'

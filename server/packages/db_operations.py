@@ -259,6 +259,9 @@ class MongoOPs:
                                 }
                             ]
                             fopData_doc["create_time"] = datetime.now()
+                            # Do not include the RecID
+                            fopData_doc.pop("recID")
+
                             mongodb.insert(MongoDB.Collections.FILE_OP_COLL, fopData_doc)
 
                     # ============================ INSERT/UPDATE JobInfo===================================
