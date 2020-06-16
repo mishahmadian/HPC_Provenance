@@ -19,7 +19,7 @@ import json
 # Create an API app
 api_app = Flask(__name__)
 # To allow flask propagating exception even if debug is set to false on app
-api_app.config['PROPAGATE_EXCEPTIONS'] = True
+api_app.config['PROPAGATE_EXCEPTIONS'] = False
 # Create RESTful API
 rest_api = Api(api_app)
 # Get Configuration object
@@ -76,8 +76,8 @@ if __name__ == '__main__':
                           "/provenance/jobscript/<string:cluster>/<string:jobid>")
 
     # Setup the API Server
-    api_app.run(port=5000, host="0.0.0.0", debug=True)
-    #api_server = WSGIServer(('', config.getApiPort()), api_app, )
+    #api_app.run(port=5000, host="0.0.0.0", debug=True)
+    api_server = WSGIServer(('', config.getApiPort()), api_app, )
     # Start API Server
-    #api_server.serve_forever()
+    api_server.serve_forever()
 
