@@ -50,8 +50,8 @@ class OSSapi(Resource):
         db = None
         try:
             db = MongoDB()
-            result = db.query_oss_jobs(resource, target, req_data['uid'], req_data['js'],
-                                       req_data['sort'], req_data['days'], req_data['user'])
+            result = db.query_oss_jobs(resource, target, req_data['uid'], req_data['js'], req_data['sort'],
+                                       req_data['days'], req_data['user'], req_data['cluster'])
 
             # Convert Datetime object to epoch
             for rec in result:
@@ -77,6 +77,7 @@ class OSSapi(Resource):
         """
         parser = reqparse.RequestParser()
         parser.add_argument('uid', type=str, required=False)
+        parser.add_argument('cluster', type=str, required=False)
         parser.add_argument('js', type=str, required=False)
         parser.add_argument('user', type=str, required=False)
         parser.add_argument('sort', type=str, required=False)

@@ -51,7 +51,7 @@ class MongoDB:
 
 
     def query_oss_jobs(self, oss_resource, ost_target=None, uid=None, jobstatus=None,
-                       sort_param=None, days=None, username=None) -> List[Dict]:
+                       sort_param=None, days=None, username=None, cluster=None) -> List[Dict]:
         """
             Aggregate the OSS/OST data with their corresponding jobs
         :return:
@@ -67,6 +67,8 @@ class MongoDB:
 
         if uid:
             filter_oss[u"$match"].update({u"uid": uid})
+        if cluster:
+            filter_oss[u"$match"].update({u"cluster": cluster})
         if ost_target:
             filter_oss[u"$match"].update({u"oss_info.ost_target": ost_target})
         if jobstatus:
@@ -157,7 +159,7 @@ class MongoDB:
 
 
     def query_mds_jobs(self, mds_resource, mdt_target=None, uid=None, jobstatus=None,
-                       sort_param=None, days=None, username=None) -> List[Dict]:
+                       sort_param=None, days=None, username=None, cluster=None) -> List[Dict]:
         """
             Aggregate the MDS/MDT data with their corresponding jobs
         :return:
@@ -173,6 +175,8 @@ class MongoDB:
 
         if uid:
             filter_mds[u"$match"].update({u"uid": uid})
+        if cluster:
+            filter_mds[u"$match"].update({u"cluster": cluster})
         if mdt_target:
             filter_mds[u"$match"].update({u"mds_info.mdt_target": mdt_target})
         if jobstatus:
@@ -280,7 +284,7 @@ class MongoDB:
 
 
     def query_fileop_mds(self, mdt_target , uid=None, jobstatus=None, sort_param=None,
-                         days=None, username=None) -> List[Dict]:
+                         days=None, username=None, cluster=None) -> List[Dict]:
         """
             Get File Operations for jobs on each MDT
         :return:
@@ -299,6 +303,8 @@ class MongoDB:
             filter_jobs[u"$match"].update({u"status": jobstatus})
         if username:
             filter_jobs[u"$match"].update({u"username": username})
+        if cluster:
+            filter_jobs[u"$match"].update({u"cluster": cluster})
 
         # JOIN FILE_OP with JobInfo collection
         join_fileop = {
@@ -393,7 +399,7 @@ class MongoDB:
         return list(cursor)
 
 
-    def query_jobinfo_all(self, jobstatus=None, sort_param=None, days=None, username=None) -> List[Dict]:
+    def query_jobinfo_all(self, jobstatus=None, sort_param=None, days=None, username=None, cluster=None) -> List[Dict]:
         """
             Get File Operations for jobs on each MDT
         :return:
@@ -403,7 +409,9 @@ class MongoDB:
         if jobstatus:
             query.update({"status": jobstatus})
         if username:
-            query.update({u"username": username})
+            query.update({"username": username})
+        if cluster:
+            query.update({"cluster": cluster})
         if days:
             query.update({"create_time": {
                 "$gte": datetime.now() - timedelta(days=days)
@@ -425,7 +433,8 @@ class MongoDB:
             "taskid" : 1.0,
             "username" : 1.0,
             "jobName" : 1.0,
-            "jobid" : 1.0
+            "jobid" : 1.0,
+            "cluster": 1.0
         }
 
         # Sort Items
@@ -610,7 +619,7 @@ class MongoDB:
                 u"h_rt": 1.0,
                 u"h_vmem": 1.0,
                 u"modified_time": 1.0,
-                u"num_cp": 1.0,
+                u"num_cpu": 1.0,
                 u"parallelEnv": 1.0,
                 u"project": 1.0,
                 u"q_del": 1.0,
@@ -622,6 +631,7 @@ class MongoDB:
                 u"taskid": 1.0,
                 u"jobid": 1.0,
                 u"jobName": 1.0,
+                u"cluster": 1.0,
                 u"pwd": 1.0,
                 u"username": 1.0,
                 u"mds_data": 1.0,

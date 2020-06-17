@@ -52,15 +52,15 @@ class MDSapi(Resource):
             db = MongoDB()
             # Get the MDS/Jobs/ and Files that are running on MDS
             if all([target, req_data['files'], req_data['files'] == "y"]):
-                result = db.query_fileop_mds(target, req_data['uid'], req_data['js'],
-                                             req_data['sort'], req_data['days'], req_data['user'])
+                result = db.query_fileop_mds(target, req_data['uid'], req_data['js'], req_data['sort'],
+                                             req_data['days'], req_data['user'], req_data['cluster'])
             # A target has to be selected
             elif target and req_data['files']:
                 return self._error("Cannot list all the files without selecting a terget MDT")
             else:
             # Otherwise, get the MDS and JobInfo Data
-                result = db.query_mds_jobs(resource, target, req_data['uid'], req_data['js'],
-                                           req_data['sort'], req_data['days'], req_data['user'])
+                result = db.query_mds_jobs(resource, target, req_data['uid'], req_data['js'], req_data['sort'],
+                                           req_data['days'], req_data['user'], req_data['cluster'])
 
             # Convert Datetime object to epoch
             for rec in result:
@@ -92,6 +92,7 @@ class MDSapi(Resource):
         parser = reqparse.RequestParser()
         parser.add_argument('files', type=str, required=False)
         parser.add_argument('uid', type=str, required=False)
+        parser.add_argument('cluster', type=str, required=False)
         parser.add_argument('js', type=str, required=False)
         parser.add_argument('user', type=str, required=False)
         parser.add_argument('sort', type=str, required=False)

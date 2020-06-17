@@ -25,16 +25,17 @@ class JobInfo(Resource):
                 results = db.query_jobinfo_detail(uid)
             else:
                 # Otherwise, list all the recorded jobs
-                results = db.query_jobinfo_all(req_data['js'], req_data['sort'], req_data['days'], req_data['user'])
+                results = db.query_jobinfo_all(req_data['js'], req_data['sort'], req_data['days'],
+                                               req_data['user'], req_data['cluster'])
 
             # Convert Datetime object to epoch
             for rec in results:
                 rec["modified_time"] = rec["modified_time"].timestamp()
 
-                for mdsdata in rec["mds_data"]:
+                for mdsdata in rec.get("mds_data", []):
                     mdsdata["mds_info"]["modified_time"] = mdsdata["mds_info"]["modified_time"].timestamp()
 
-                for ossData in rec["oss_data"]:
+                for ossData in rec.get("oss_data", []):
                     ossData["oss_info"]["modified_time"] = ossData["oss_info"]["modified_time"].timestamp()
 
 
@@ -59,6 +60,7 @@ class JobInfo(Resource):
         """
         parser = reqparse.RequestParser()
         parser.add_argument('uid', type=str, required=False)
+        parser.add_argument('cluster', type=str, required=False)
         parser.add_argument('js', type=str, required=False)
         parser.add_argument('user', type=str, required=False)
         parser.add_argument('sort', type=str, required=False)
