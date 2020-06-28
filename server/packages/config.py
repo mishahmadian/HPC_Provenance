@@ -36,7 +36,7 @@ class ServerConfig:
     # Validate the server.conf to ensure all the mandatory sections and options
     # are defined and correct
     def __validateConfig(self):
-        config = {'lustre' : ['mds_hosts', 'oss_hosts', 'jobid_vars'],
+        config = {'lustre' : ['mds_hosts', 'oss_hosts', 'jobid_vars', 'mdt_mnt'],
                   'rabbitmq' : ['server', 'port', 'username', 'password', 'vhost'],
                   'io_listener' : ['exchange', 'queue'],
                   'changelogs' : ['files_ops', 'parallel','interval', 'mdt_targets', 'users'],
@@ -149,6 +149,12 @@ class ServerConfig:
     #   Return: List
     def getJobIdVars(self) -> list:
         return self.__getConfigValue('lustre', 'jobid_vars', list)
+
+    # Get the MDT to Mount Point schema
+    #   Return: str
+    def getMDT_MNT(self) -> str:
+        mdt_mnt = self.__getConfigValue('lustre', 'mdt_mnt', str)
+        return mdt_mnt.strip("][")
 
     # Get the name of the server that RabbitMQ-Server is Running
     # Return: String

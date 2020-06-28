@@ -15,11 +15,12 @@ from subprocess import check_output, CalledProcessError, DEVNULL
 from config import ServerConfig, ConfigReadExcetion
 from exceptions import ProvenanceExitExp
 from datetime import datetime
+from typing import List, Dict
 from logger import log, Mode
-from typing import List
 from math import ceil
 import hashlib
 import ctypes
+import json
 #
 # Lustre Change Logs Process
 #
@@ -39,6 +40,7 @@ class ChangeLogCollector(Process):
             self._interval = self.config.getChLogsIntv()
             self._chLogUsers = self.config.getChLogsUsers()
             self._jobIdVars = self.config.getJobIdVars()
+            self._MDT_mount = json.loads(self.config.getMDT_MNT())
             _procNum = self.config.getChLogsPocnum()
             # If number of processes are less than 1 then all the available processes will be used
             self._procNum = _procNum if _procNum > 0 else cpu_count()
@@ -80,7 +82,7 @@ class ChangeLogCollector(Process):
                     # Those lines that do not have JobId will be ignored at this time!
                     fileOpObj_Lst = pool.starmap(
                         self.changeLogs2FileOpsObj,
-                        [(chlog, mdtTarget, self._jobIdVars) for chlog in chLogOutputs if "j=" in chlog],
+                        [(chlog, mdtTarget, self._jobIdVars, self._MDT_mount) for chlog in chLogOutputs if "j=" in chlog],
                         chunksize=chunkSize
                     )
                     pool.close()
@@ -130,7 +132,7 @@ class ChangeLogCollector(Process):
 
     # Convert (Parse & Compile) the ChangeLog output to FileOpObj object
     @staticmethod
-    def changeLogs2FileOpsObj(chLogOutput: str, mdtTarget: str, jobid_vars: List):
+    def changeLogs2FileOpsObj(chLogOutput: str, mdtTarget: str, jobid_vars: List, mdt_mntPoints: Dict):
         try:
             # create a new FileOpObj object per record
             fileOpObj = FileOpObj()
@@ -143,7 +145,7 @@ class ChangeLogCollector(Process):
             fileOpObj.setOpType(records[1])  # The Type of File Operation
             fileOpObj.setTimestamp(records[2], records[3])  # Date&TimeStamp based on Time and Date of each record
             # -- skip record[4] which is an operation type flag
-            fileOpObj.setTargetFid(records[5], mdtTarget)  # Target FID
+            fileOpObj.setTargetFid(records[5], mdt_mntPoints.get(mdtTarget, mdtTarget))  # Target FID
             fileOpObj.setJobInfo(records[6], jobid_vars)
             #
             # The following records may or may not show up based on the operation type or host
@@ -158,7 +160,8 @@ class ChangeLogCollector(Process):
                         fileOpObj.setNid(rec)  # NID (IP@<lnet>) of the target host if Provided
 
                     elif "p=" in rec:
-                        fileOpObj.setParentFid(rec, mdtTarget)  # Parent FID of the target if provided
+                        # Parent FID of the target if provided
+                        fileOpObj.setParentFid(rec, mdt_mntPoints.get(mdtTarget, mdtTarget))
 
                     elif "m=" in rec:
                         fileOpObj.setOpenMode(rec)
@@ -234,12 +237,16 @@ class FileOpObj(object):
         date_time_obj = datetime.strptime(datetime_str, '%H:%M:%S.%f %Y.%m.%d')
         self.timestamp = datetime.timestamp(date_time_obj)
 
-    def setTargetFid(self, tfid, mdtTarget):
+    def setTargetFid(self, tfid, mntPointLst: List):
         self.target_fid = tfid.split('=')[1].strip()
-        try:
-            self.target_path = check_output("lfs fid2path --link 0 " + mdtTarget + " " + self.target_fid,
-                                                       shell=True, stderr=DEVNULL).decode("utf-8").strip()
-        except CalledProcessError:
+        for mntPoint in mntPointLst:
+            try:
+                self.target_path = check_output("lfs fid2path --link 0 " + mntPoint + " " + self.target_fid,
+                                                           shell=True, stderr=DEVNULL).decode("utf-8").strip()
+                break
+            except CalledProcessError:
+                continue
+        else:
             # The file has been removed already and the fid is invalid
             self.target_path = "File_Not_Exist"
 
@@ -249,14 +256,18 @@ class FileOpObj(object):
     def setNid(self, nid):
         self.nid = nid.split('=')[1].strip()
 
-    def setParentFid(self, pfid, mdtTarget):
+    def setParentFid(self, pfid, mntPointLst: List):
         self.parent_fid = pfid.split('=')[1].strip()
-        try:
-            self.parent_path = check_output("lfs fid2path --link 0 " + mdtTarget + " " + self.parent_fid,
-                                                       shell=True, stderr=DEVNULL).decode("utf-8").strip()
-        except CalledProcessError:
+        for mntPoint in mntPointLst:
+            try:
+                self.parent_path = check_output("lfs fid2path --link 0 " + mntPoint + " " + self.parent_fid,
+                                                           shell=True, stderr=DEVNULL).decode("utf-8").strip()
+                break
+            except CalledProcessError:
+                continue
+        else:
             # The file has been removed already and the fid is invalid
-            self.parent_path = "File Not Exist"
+            self.target_path = "File_Not_Exist"
 
     def setTargetFile(self, name):
         self.target_file = name.strip()
