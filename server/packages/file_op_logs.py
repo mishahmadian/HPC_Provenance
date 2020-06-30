@@ -41,6 +41,7 @@ class ChangeLogCollector(Process):
             self._chLogUsers = self.config.getChLogsUsers()
             self._jobIdVars = self.config.getJobIdVars()
             self._MDT_mount = json.loads(self.config.getMDT_MNT())
+            self._filter_procs = self.config.isFilterProcs()
             _procNum = self.config.getChLogsPocnum()
             # If number of processes are less than 1 then all the available processes will be used
             self._procNum = _procNum if _procNum > 0 else cpu_count()
@@ -76,13 +77,17 @@ class ChangeLogCollector(Process):
                     else:
                         chunkSize = 1
 
+                    # List of possible Lustre mount points for this mdtTarget
+                    mdt_mntPoint = self._MDT_mount.get(mdtTarget, [mdtTarget])
+
                     # Create a pool of process, and assign the number of process which is defined by user
                     pool = Pool(processes = self._procNum if self._procNum > 0 else cpu_count())
                     # run a poll of process to map the ChangeLogs outputs line by line to FileOpObj objects
                     # Those lines that do not have JobId will be ignored at this time!
                     fileOpObj_Lst = pool.starmap(
                         self.changeLogs2FileOpsObj,
-                        [(chlog, mdtTarget, self._jobIdVars, self._MDT_mount) for chlog in chLogOutputs if "j=" in chlog],
+                        [(chlog, mdtTarget, self._jobIdVars, mdt_mntPoint, self._filter_procs)
+                            for chlog in chLogOutputs if "j=" in chlog],
                         chunksize=chunkSize
                     )
                     pool.close()
@@ -132,7 +137,8 @@ class ChangeLogCollector(Process):
 
     # Convert (Parse & Compile) the ChangeLog output to FileOpObj object
     @staticmethod
-    def changeLogs2FileOpsObj(chLogOutput: str, mdtTarget: str, jobid_vars: List, mdt_mntPoints: Dict):
+    def changeLogs2FileOpsObj(chLogOutput: str, mdtTarget: str, jobid_vars: List,
+                                mdt_mntPoints: List, filter_procs: bool):
         try:
             # create a new FileOpObj object per record
             fileOpObj = FileOpObj()
@@ -140,12 +146,19 @@ class ChangeLogCollector(Process):
             fileOpObj.setMdtTarget(mdtTarget)
             # records splits by space
             records = chLogOutput.split(' ')
+            # Ignore any file operations from Non-Job processes
+            if filter_procs and \
+                    (not any ([records[6].split('=')[1].strip().startswith(jobid_var) for jobid_var in jobid_vars])):
+                fileOpObj.setRecID(records[0])
+                fileOpObj.setJobInfo(records[6], jobid_vars)
+                return fileOpObj
+
             # Fill the fileOpObj Object:
             fileOpObj.setRecID(records[0])  # Record Id --> My not be useful at all
             fileOpObj.setOpType(records[1])  # The Type of File Operation
             fileOpObj.setTimestamp(records[2], records[3])  # Date&TimeStamp based on Time and Date of each record
             # -- skip record[4] which is an operation type flag
-            fileOpObj.setTargetFid(records[5], mdt_mntPoints.get(mdtTarget, mdtTarget))  # Target FID
+            fileOpObj.setTargetFid(records[5], mdt_mntPoints)  # Target FID
             fileOpObj.setJobInfo(records[6], jobid_vars)
             #
             # The following records may or may not show up based on the operation type or host
@@ -161,7 +174,7 @@ class ChangeLogCollector(Process):
 
                     elif "p=" in rec:
                         # Parent FID of the target if provided
-                        fileOpObj.setParentFid(rec, mdt_mntPoints.get(mdtTarget, mdtTarget))
+                        fileOpObj.setParentFid(rec, mdt_mntPoints)
 
                     elif "m=" in rec:
                         fileOpObj.setOpenMode(rec)

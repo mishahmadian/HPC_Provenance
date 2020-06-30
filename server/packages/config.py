@@ -39,7 +39,7 @@ class ServerConfig:
         config = {'lustre' : ['mds_hosts', 'oss_hosts', 'jobid_vars', 'mdt_mnt'],
                   'rabbitmq' : ['server', 'port', 'username', 'password', 'vhost'],
                   'io_listener' : ['exchange', 'queue'],
-                  'changelogs' : ['files_ops', 'parallel','interval', 'mdt_targets', 'users'],
+                  'changelogs' : ['files_ops', 'parallel','interval', 'mdt_targets', 'users', 'filter_procs'],
                   'aggregator' : ['interval'],
                   '*uge' : ['clusters', 'address', 'port', 'acct_interval', 'spool_dirs'],
                   'mongodb' : ['host', 'port', 'auth_mode', 'username', 'password', 'database'],
@@ -215,6 +215,17 @@ class ServerConfig:
     # Return: List
     def getChLogsUsers(self) -> list:
         return self.__getConfigValue('changelogs', 'users', list)
+
+    # Include the File OPs for non-job processes
+    # Return: boolean
+    def isFilterProcs(self) -> bool:
+        filterProc = self.__getConfigValue('changelogs', 'filter_procs', str)
+        if filterProc.lower() == "true":
+            return True
+        elif filterProc.lower() == "false":
+            return False
+        else:
+            raise ConfigReadExcetion("The 'filter_procs' parameter under [changelogs] section must be True/False")
 
     # Get the interval between aggregating the received data in the queue
     # Return: Float
