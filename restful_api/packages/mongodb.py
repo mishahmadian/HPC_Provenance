@@ -640,15 +640,64 @@ class MongoDB:
             }
         }
 
+        # Filter File_OP
+        fileop_query = {
+            u"$match": {
+                u"uid": uid,
+            }
+        }
+
+        fileop_project = {
+            u"$project": {
+                u"_id": 0.0,
+                u"mdtTarget": 1.0,
+                u"nid": 1.0,
+                u"target_path": 1.0,
+                u"target_file": 1.0,
+                u"parent_path": 1.0,
+                u"file_ops": 1.0,
+                #u"create_time": 1.0
+            }
+        }
+
+        fileop_expand = {
+            u"$unwind": {
+                u"path": u"$file_ops",
+                u"preserveNullAndEmptyArrays": False
+            }
+        }
+
+        fileop_sort = {
+            u"$sort": {
+                u"file_ops.timestamp": -1.0
+            }
+        }
+
+
         # ---------- Generating Aggregation Pipeline ------------
-        pipeline = [jobInfo_query, join_mds, join_oss, join_fileop, projection]
-
-        # Selects the collection of this database
+        #--> Get JobInfo + MDS + OSS data
+        pipeline1 = [jobInfo_query, join_mds, join_oss, projection]
+        # Selects the collection of JobInfo database
         coll = self._mongoDB[self.Collections.JOB_INFO_COLL.value]
-        # Perform the Query
-        cursor = coll.aggregate(pipeline, allowDiskUse=True)
+        # Perform the First Query
+        cursor1 = coll.aggregate(pipeline1, allowDiskUse=True)
+        # Results from the first query
+        result = list(cursor1)
 
-        return list(cursor)
+        if result:
+            #--> Get FileOp data
+            pipeline2 = [fileop_query, fileop_project, fileop_expand, fileop_sort]
+
+            # Selects the collection of FileOP database
+            coll = self._mongoDB[self.Collections.FILE_OP_COLL.value]
+            # Perform the second Query
+            cursor2 = coll.aggregate(pipeline2, allowDiskUse=True)
+            # append the results
+            result[0]["fileop_data"] = list(cursor2)
+
+            return result
+
+        return []
 
 
     def query_jobscript(self, cluster, jobid) -> Dict:
