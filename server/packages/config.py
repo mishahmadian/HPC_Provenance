@@ -37,13 +37,13 @@ class ServerConfig:
     # are defined and correct
     def __validateConfig(self):
         config = {'lustre' : ['mds_hosts', 'oss_hosts', 'jobid_vars', 'mdt_mnt'],
-                  'rabbitmq' : ['server', 'port', 'username', 'password', 'vhost'],
+                  'rabbitmq' : ['server', 'port', 'username', 'password', 'vhost', 'prefetch', 'heartbeat', 'timeout'],
                   'io_listener' : ['exchange', 'queue'],
                   'changelogs' : ['files_ops', 'parallel','interval', 'mdt_targets', 'users', 'filter_procs'],
                   'aggregator' : ['interval'],
                   '*uge' : ['clusters', 'address', 'port', 'acct_interval', 'spool_dirs'],
                   'mongodb' : ['host', 'port', 'auth_mode', 'username', 'password', 'database'],
-                  'influxdb' : ['host', 'port', 'username', 'password', 'database']}
+                  'influxdb' : ['host', 'port', 'username', 'password', 'database', 'tzone']}
         # Iterate over the Sections in config file
         for section in config.keys():
             # all the sections with '*' are optional
@@ -181,6 +181,21 @@ class ServerConfig:
     def getVhost(self) -> str:
         return self.__getConfigValue('rabbitmq', 'vhost', str)
 
+    # Get number of data that has to be prefetched by RabbitMQ
+    # Return: integer
+    def getPrefetchCount(self) -> int:
+        return int(self.__getConfigValue('rabbitmq', 'prefetch', int))
+
+    # Get RabbitMQ connection heartbeat timeout
+    # Return: float
+    def getHeartBeat(self) -> float:
+        return int(self.__getConfigValue('rabbitmq', 'heartbeat', float))
+
+    # Get RabbitMQ blocked connection timeout
+    # Return: float
+    def getBlockedConnTimeout(self) -> float:
+        return int(self.__getConfigValue('rabbitmq', 'timeout', float))
+
     # Get the name of the Queue that io_listener uses
     # Return: String
     def getIOListener_Queue(self) -> str:
@@ -302,20 +317,25 @@ class ServerConfig:
     def getInfluxdbPort(self) -> int:
         return self.__getConfigValue('influxdb', 'port', int)
 
-    # Get the MongoDB username
+    # Get the InfluxDB username
     # Return: String
     def getInfluxdbUser(self) -> str:
         return self.__getConfigValue('influxdb', 'username', str)
 
-    # Get the MongoDB password
+    # Get the InfluxDB password
     # Return: String
     def getInfluxdbPass(self) -> str:
         return self.__getConfigValue('influxdb', 'password', str)
 
-    # Get the MongoDB source database
+    # Get the InfluxDB source database
     # Return: String
     def getInfluxdb_DB(self) -> str:
         return self.__getConfigValue('influxdb', 'database', str)
+
+    # Get the current time zone
+    # Return: String
+    def getTimeZone(self) -> str:
+        return self.__getConfigValue('influxdb', 'tzone', str)
 
 #
 # In any case of Error, Exception, or Mistake ConfigReadExcetion will be raised

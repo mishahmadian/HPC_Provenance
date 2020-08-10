@@ -16,6 +16,7 @@ from influxdb import InfluxDBClient
 from datetime import datetime
 from logger import log, Mode
 from enum import Enum, unique
+from pytz import timezone
 
 #------------------------------------
 #          MongoDB
@@ -334,6 +335,7 @@ class InfluxDB:
                 password=config.getInfluxdbPass(),
                 database=config.getInfluxdb_DB()
             )
+            self.timezone = config.getTimeZone()
 
         except ConfigReadExcetion as confExp:
             log(Mode.DB_MANAGER, confExp.getMessage())
@@ -382,12 +384,14 @@ class InfluxDB:
                     measurement: 'InfluxDB.Measurements',
                     tags: Dict,
                     fields: Dict,
-                    time: datetime):
+                    time: datetime,
+                    tzone = str):
 
             self._measurement = measurement
             self._tags = tags
             self._fields = fields
             self._time = time
+            self._tz = timezone(tzone)
 
 
         def to_dict(self):
@@ -395,7 +399,7 @@ class InfluxDB:
                 "measurement": self._measurement.value,
                 "tags": self._tags,
                 "fields": self._fields,
-                "time": self._time.strftime('%Y-%m-%dT%H:%M:%SZ')
+                "time": self._tz.localize(self._time).isoformat()
             }
 
 

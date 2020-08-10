@@ -9,10 +9,11 @@
 
     Misha Ahmadian (misha.ahmadian@ttu.edu)
 """
-
-from ConfigParser import SafeConfigParser
+try:
+    from ConfigParser import SafeConfigParser
+except ImportError:
+    from configparser import ConfigParser as SafeConfigParser
 import os
-import time
 
 #
 # Main class in Config.py that reads and maintains the configuration

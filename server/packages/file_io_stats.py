@@ -15,11 +15,14 @@ from multiprocessing import Process, Queue, Event
 from yaml import Loader, load as yaml_load
 from exceptions import ProvenanceExitExp
 from persistant import FinishedJobs
+from threading import Thread, Lock, get_ident
 from typing import Dict, List, Set
+from functools import partial
 from logger import log, Mode
 import hashlib
 import ctypes
 import json
+import time
 
 # Try to load the PyYaml if it's been compiled against LibYAML
 # which is more efficient (Looks like CLoader has a bug!)
@@ -42,7 +45,12 @@ class IOStatsListener(Process):
         self.finishedJobs = FinishedJobs()
         self.config = ServerConfig()
         self._shut_down = stop_flag
+        self._threads: Dict[int, Thread] = {}
+        self._lock = Lock()
         try:
+            # Get IO Stat Listener Params
+            self._iostats_queue = self.config.getIOListener_Queue()
+            self._iostats_exchange = self.config.getIOListener_Exch()
             self.__MDS_hosts = self.config.getMDS_hosts()
             self.__OSS_hosts = self.config.getOSS_hosts()
             self._jobIdVars = self.config.getJobIdVars()
@@ -57,7 +65,7 @@ class IOStatsListener(Process):
             comm = ServerConnection()
             # Start collecting IO statistics
             # ioStats_recv function will take care of incoming data
-            comm.Collect_io_stats(self.ioStats_receiver)
+            comm.start_listener(self._iostats_queue, self._iostats_exchange, self.on_iostats_recieved)
 
         except CommunicationExp as commExp:
             log(Mode.FILE_IO_STATS, commExp.getMessage())
@@ -68,13 +76,29 @@ class IOStatsListener(Process):
         except Exception as exp:
             log(Mode.FILE_IO_STATS, str(exp))
 
+    # This method gets called when a new data fetched from the message broker queue
+    # Then, it will handle the data process in multi-thread manner
+    def on_iostats_recieved(self, channel, method, properties, body):
+        # Get the unique delivery_tag of this AMQP message:
+        delivery_tag = method.delivery_tag
+        # Get current connection
+        connection = channel._connection
+
+        # Terminate if the stop_flag was set
+        if self._shut_down.is_set():
+            self._terminate(connection, channel, delivery_tag)
+            return
+
+        # Create a Thread for processing incoming I/O Stats Data
+        thrd = Thread(target=self.ioStats_processing, args=(connection, channel, delivery_tag, body, self._lock))
+        thrd.start()
+        # Keep the history of threads
+        self._threads[thrd.ident] = thrd
+
+
     # This function will be triggered as soon as RabbitMQ receives data from
     # agents on jobStat queue
-    def ioStats_receiver(self, ch, method, properties, body):
-        # ---------- Terminate if the stop_flag was set ----------------
-        if self._shut_down.is_set():
-            ch.stop_consuming()
-            return
+    def ioStats_processing(self, connection, channel, delivery_tag, body, lock):
 
         mdsStatObjLst : List[MDSDataObj] = []
         ossStatObjLst : List[OSSDataObj] = []
@@ -84,24 +108,25 @@ class IOStatsListener(Process):
         io_stat_map = json.loads(body.decode("utf-8"))
         # The server host name
         lustre_server = io_stat_map["server"]
+
         # Check whether the IO stat data comes from MDS or OSS.
         # Then choose the proper function
         if lustre_server in self.__MDS_hosts:
-            # Then data should be processed for MDS
+            # Parse the MDS data in a separate thread
             blockedJobs, mdsStatObjLst = self.__parseIoStats_mds(io_stat_map, finished_jobIds)
-            # Manage Finished Job IDs
-            self.__refine_finishedJobs(lustre_server, blockedJobs, finished_jobIds)
 
         elif lustre_server in self.__OSS_hosts:
-            # Parse the OSS IO stats
+            # Parse the OSS data in a separate thread
             blockedJobs, ossStatObjLst = self.__parseIoStats_oss(io_stat_map, finished_jobIds)
-            # Manage Finished Job IDs
-            self.__refine_finishedJobs(lustre_server, blockedJobs, finished_jobIds)
 
         else:
             # Otherwise the data should be processed for OSS
             raise IOStatsException("The Source of incoming data does not match "
                                     +" with MDS/OSS hosts in 'server.conf'")
+
+        # Manage Finished Job IDs
+        with lock:
+            self.__refine_finishedJobs(lustre_server, blockedJobs, finished_jobIds)
 
         # Put mdsStatObjLst into the MSDStat_Q
         if mdsStatObjLst:
@@ -115,6 +140,27 @@ class IOStatsListener(Process):
                                    f"{io_stat_map['timestamp']};"
                                    f"{io_stat_map.get('serverLoad', [0.0, 0.0, 0.0])};"
                                    f"{io_stat_map.get('serverMemory', [0, 0])}")
+
+        # Send ACK message after the data processing is done
+        threadsafe_ACK = partial(ServerConnection.ack_message, channel, delivery_tag)
+        connection.add_callback_threadsafe(threadsafe_ACK)
+
+    # Terminate the File IO States loop
+    def _terminate(self, connection, channel, delivery_tag):
+        # Reject the incoming data and put it back into the queue
+        channel.basic_reject(delivery_tag, requeue=True)
+        # signal consuming loop to exit
+        channel.stop_consuming()
+        # Close the channel
+        if channel.is_open:
+            channel.close()
+        # Close the connection
+        if connection and connection.is_open:
+            connection.close()
+        # Wait for the processing threads to finish
+        for thr in list(self._threads.values()):
+            if thr and thr.is_alive():
+                thr.join()
 
 
     # this method finds the finished_Job_IDs that no more exist on Lustre JobStat
@@ -163,17 +209,18 @@ class IOStatsListener(Process):
                 mdsObj.mdt_target = serverTarget
                 # Extract job_id
                 jobid = str(jobstat['job_id'])
-                # If cluster_sched_jobid[.taskid] appears among the list of finished jobs,
-                # then ignore the Jobstats data of this job
-                if jobid in finished_jobIds[serverHost]:
-                    blockedJobs.add(jobid)
-                    break
 
                 # if the id format is not compatible with "cluster_scheduler_ID" then it's a process id
                 if not any([jobid.startswith(jobid_var) for jobid_var in self._jobIdVars]):
                     mdsObj.procid = jobid
                 # Otherwise, it is a JOB
                 else:
+                    # If cluster_sched_jobid[.taskid] appears among the list of finished jobs,
+                    # then ignore the JobStats data of this job
+                    if jobid in finished_jobIds[serverHost]:
+                        blockedJobs.add(jobid)
+                        break
+
                     mdsObj.cluster, mdsObj.sched_type, mdsObj.jobid = jobid.split('_')
                     # if the jobid is separated by '.' then it means the job is an array job
                     if '.' in mdsObj.jobid:

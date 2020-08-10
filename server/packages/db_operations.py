@@ -405,6 +405,11 @@ class InfluxOPs:
                     # Update/Insert per MDS and MDT
                     for mds_host, mds in mdsObj_tbl.items():
                         for mdt_target, mdsObj in mds.items():
+                            # Calculate the total mds operations per job
+                            total_ops = 0
+                            for attr in ["open", "close", "crossdir_rename", "getattr", "link", "mkdir", "mknod",
+                                         "rename", "rmdir", "samedir_rename", "setattr", "unlink", "statfs"]:
+                                total_ops += int(getattr(mdsObj, attr))
                             # Tags will be indexed and make the query faster
                             tags = {
                                 "host": mds_host,
@@ -427,7 +432,8 @@ class InfluxOPs:
                                 "samedir_rename": mdsObj.samedir_rename,
                                 "setattr": mdsObj.setattr,
                                 "remove": mdsObj.unlink,
-                                "statfs": mdsObj.statfs
+                                "statfs": mdsObj.statfs,
+                                "total_ops": total_ops
                             }
                             # Timestamp
                             time = datetime.fromtimestamp(int(mdsObj.snapshot_time))
@@ -436,7 +442,8 @@ class InfluxOPs:
                                 measurement=InfluxDB.Measurements.MDS_MEAS,
                                 tags=tags,
                                 fields=fields,
-                                time=time
+                                time=time,
+                                tzone=influxdb.timezone
                             )
                             # Add data point to the list that has to be inserted
                             data_points.append(dataPoint.to_dict())
@@ -471,7 +478,8 @@ class InfluxOPs:
                                 measurement=InfluxDB.Measurements.OSS_MEAS,
                                 tags=tags,
                                 fields=fields,
-                                time=time
+                                time=time,
+                                tzone=influxdb.timezone
                             )
                             # Add data point to the list that has to be inserted
                             data_points.append(dataPoint.to_dict())
@@ -508,7 +516,8 @@ class InfluxOPs:
                     measurement=InfluxDB.Measurements.SERVER_STATS_MEAS,
                     tags=tags,
                     fields=fields,
-                    time=time
+                    time=time,
+                    tzone=influxdb.timezone
                 )
                 # Add data point to the list that has to be inserted
                 data_points.append(dataPoint.to_dict())
