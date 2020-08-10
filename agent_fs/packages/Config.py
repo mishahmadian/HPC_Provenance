@@ -9,10 +9,11 @@
 
     Misha Ahmadian (misha.ahmadian@ttu.edu)
 """
-
-from ConfigParser import SafeConfigParser
+try:
+    from ConfigParser import SafeConfigParser
+except ImportError:
+    from configparser import ConfigParser as SafeConfigParser
 import os
-import time
 
 #
 # Main class in Config.py that reads and maintains the configuration
@@ -35,7 +36,7 @@ class AgentConfig:
     def __validateConfig(self):
         config = {'lustre' : ['mds_hosts', 'oss_hosts', 'interval'],
                   'rabbitmq' : ['server', 'username', 'password'],
-                  'producer' : ['exchange', 'queue', 'delay'],
+                  'producer' : ['exchange', 'queue'],
                   'stats': ['cpu_load', 'mem_usage']}
         # Iterate over the Sections in config file
         for section in config.keys():
@@ -156,15 +157,6 @@ class AgentConfig:
         if self.__loadConfigFile() or not hasattr(self, 'prodExchange'):
             self.prodExchange = self.__parser.get('producer', 'exchange')
         return self.prodExchange
-
-    # Get the delay interval between sending the logs to server
-    # Return: Float
-    def getSendingInterval(self):
-        if self.__loadConfigFile() or not hasattr(self, 'sendIntv'):
-            self.sendIntv = self.__parser.get('producer', 'delay')
-            if not self.sendIntv.isdigit():
-                raise ConfigReadExcetion("The 'delay' parameter under [producer] section must be numeric")
-        return float(self.sendIntv)
 
     # The agent should/not collect CPU Load of the host
     # Return: Boolean

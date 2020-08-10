@@ -2,3 +2,4 @@ python-daemon
 pika
 pymongo
 influxdb
+pyyaml

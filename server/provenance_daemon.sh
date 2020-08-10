@@ -10,7 +10,7 @@
 #|------------------------------------------------------|
 #
 # Cluster Name
-CLUSTER="genius"
+CLUSTERS="quanah hrothgar"
 # Find the Python 3.x on this system
 PYTHON3=$(command -v python3)
 # The minimum required version
@@ -53,7 +53,9 @@ start)
     fi
   fi
   # Clean up the RabbitMQ RPC Channel
-  $RABBITMQCTL -p "$VHOST" purge_queue ${CLUSTER}_rpc_queue
+  for CLUSTER in $CLUSTERS; do
+    $RABBITMQCTL -p "$VHOST" purge_queue "${CLUSTER}"_rpc_queue
+  done
   # Start the Provenance Server Service
   $PYTHON3 "${CURRENTPATH}"/packages/main_interface.py &
   echo $! > $PID_FILE

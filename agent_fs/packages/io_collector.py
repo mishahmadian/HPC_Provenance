@@ -15,31 +15,36 @@
  Misha ahmadian (misha.ahmadian@ttu.edu)
 """
 
-from subprocess import check_output, STDOUT, CalledProcessError
-from Config import AgentConfig, ConfigReadExcetion
+from subprocess import check_output, Popen, PIPE, STDOUT, CalledProcessError
 from Communication import Producer, CommunicationExp
-from threading import Thread, Event
+from Config import AgentConfig, ConfigReadExcetion
+from multiprocessing import Process, Event
 from Logger import log, Mode
-from Queue import Queue
 import signal
 import socket
 import json
 import time
 import os
+from pprint import pprint
 
 #
 #  Defined a Class for collecting JobStats on MDS(s) and OSS(s)
 #
-class CollectIOstats(Thread):
-    def __init__(self, jobstat_Q):
-        Thread.__init__(self)
-        self.exit_flag = Event()
+class CollectIOstats(Process):
+    def __init__(self, shutdown):
+        Process.__init__(self)
         self.config = AgentConfig()
-        self.jobstat_Q = jobstat_Q
+        self.shutdown = shutdown
         self.hostname = socket.gethostname()
         try:
             # Set time interval for Collecting IO stats
             self._waitInterval = self.config.getJobstatsInterval()
+
+            self.maxJobStatAge = self.config.getMaxJobstatAge()
+            self.cpu_load = self.config.is_CPU_Load_avail()
+            self.mem_usage = self.config.is_Mem_Usage_avail()
+            # Create producer communication
+            self.producer = Producer()
 
             ## --if self.hostname in self.config.getMDS_hosts():
             # Set JobStat cleanup interval
@@ -53,9 +58,11 @@ class CollectIOstats(Thread):
         except ConfigReadExcetion as confExp:
             log(Mode.IO_COLLECTOR, confExp.getMessage())
 
-    # Implement Thread.run()
+        except CommunicationExp as commExp:
+            log(Mode.PUBLISHER, commExp.getMessage())
+
     def run(self):
-        while not self.exit_flag.is_set():
+        while not self.shutdown.is_set():
             try:
                 # Is this server MDS or OSS?
                 serverParam = self._getServerParam()
@@ -74,17 +81,21 @@ class CollectIOstats(Thread):
 
                         # Put the jobStat output in thread safe Queue along with the fsname target
                         if jobstat_out.strip():
-                            self.jobstat_Q.put((target, jobstat_out))
+                            self._publish_jobstats(jobstat_out, target)
                             # Clear JobStats logs immediately to free space
                             ##--self._clearJobStats(serverParam, target)
                 else:
                     log(Mode.IO_COLLECTOR, fsnames)
 
-                self.exit_flag.wait(self._waitInterval)
+                self.shutdown.wait(self._waitInterval)
 
             except ConfigReadExcetion as confExp:
                 log(Mode.IO_COLLECTOR, confExp.getMessage())
-                self.exit_flag.set()
+                self.shutdown.set()
+
+            except MonitoringExitExp:
+                pass
+
 
     # Load the Agent Settings from Agent.conf file
     def _getServerParam(self):
@@ -145,62 +156,6 @@ class CollectIOstats(Thread):
             log(Mode.IO_COLLECTOR, str(callexp))
             return "error: " + str(callexp)
 
-
-#
-#  Defined Class for Sending/Publishing Jobstats to Monitoring Server program
-#
-class PublishIOstats(Thread):
-    def __init__(self, jobstat_Q):
-        Thread.__init__(self)
-        self.exit_flag = Event()
-        self.jobstat_Q = jobstat_Q
-        self.hostname = socket.gethostname()
-        self.config = AgentConfig()
-
-        try:
-            self.producer = Producer()
-            self. maxJobStatAge = self.config.getMaxJobstatAge()
-            self.cpu_load = self.config.is_CPU_Load_avail()
-            self.mem_usage = self.config.is_Mem_Usage_avail()
-        except CommunicationExp as commExp:
-            log(Mode.PUBLISHER, commExp.getMessage())
-
-        except ConfigReadExcetion as confExp:
-            log(Mode.PUBLISHER, confExp.getMessage())
-
-
-    def run(self):
-        while not self.exit_flag.is_set():
-            if not self.jobstat_Q.empty():
-                jobstat_msg = self.jobstat_Q.get()
-                timestamp = time.time()
-                message_body = {"server" : self.hostname,
-                                "timestamp" : timestamp,
-                                "maxAge" : self.maxJobStatAge,
-                                "fstarget" : jobstat_msg[0],
-                                "output": jobstat_msg[1]}
-
-                if self.cpu_load:
-                    message_body.update({"serverLoad": self._getServerLoadAvg()})
-
-                if self.mem_usage:
-                    message_body.update({"serverMemory": self._getServerMemoryUsage()})
-
-                # Convert Message body dictionary to JSON format
-                message_json = json.dumps(message_body)
-
-                # Send the message to Server
-                try:
-                    self.producer.send(message_json)
-
-                except CommunicationExp as commExp:
-                    log(Mode.IO_COLLECTOR, commExp.getMessage())
-                    self.exit_flag.set()
-
-            #
-            sendingInterval = self.producer.getInterval()
-            self.exit_flag.wait(sendingInterval)
-
     @staticmethod
     def _getServerLoadAvg():
         try:
@@ -212,7 +167,7 @@ class PublishIOstats(Thread):
     @staticmethod
     def _getServerMemoryUsage():
         try:
-            out, err = subprocess.Popen(['free', '-t', '-m'], stdout=subprocess.PIPE).communicate()
+            out, err = Popen(['free', '-t', '-m'], stdout=PIPE).communicate()
             if not err and out:
                 return map(int, out.splitlines()[-1].split()[1:3])
             else:
@@ -220,6 +175,33 @@ class PublishIOstats(Thread):
         except Exception:
             return [0, 0]
 
+    # Send the job stats data along with server stats to
+    # the provenance server
+    def _publish_jobstats(self, jobstat_data, fstarget):
+
+        timestamp = time.time()
+        message_body = {"server": self.hostname,
+                        "timestamp": timestamp,
+                        "maxAge": self.maxJobStatAge,
+                        "fstarget": fstarget,
+                        "output": jobstat_data}
+
+        if self.cpu_load:
+            message_body.update({"serverLoad": self._getServerLoadAvg()})
+
+        if self.mem_usage:
+            message_body.update({"serverMemory": self._getServerMemoryUsage()})
+
+        # Convert Message body dictionary to JSON format
+        message_json = json.dumps(message_body)
+
+        # Send the message to Server
+        try:
+            self.producer.send(message_json)
+
+        except CommunicationExp as commExp:
+            log(Mode.IO_COLLECTOR, commExp.getMessage())
+            self.shutdown.set()
 
 
 #
@@ -235,12 +217,13 @@ class MonitoringExitExp(Exception):
 #
 class IO_Collector:
     def __init__(self):
-        self.IOStats_Thr = None
-        self.pubJstat_Thr = None
+        self.iostats_proc = None
+        self.shutdown = Event()
 
         # Register signal handler
         signal.signal(signal.SIGINT, self.agent_exit)
         signal.signal(signal.SIGTERM, self.agent_exit)
+        signal.signal(signal.SIGHUP, self.agent_exit)
 
     # Handle the SIGINT and SIGTERM signals in order to shutdown
     # the Collector agent
@@ -252,33 +235,25 @@ class IO_Collector:
         try:
             log(Mode.APP_START, "***************** Provenance Lustre Agent Started *****************")
 
-            jobstat_Q = Queue()
-
             # Jobstat Collection thread
-            self.IOStats_Thr = CollectIOstats(jobstat_Q)
-            self.IOStats_Thr.start()
-
-            # JobStat producer thread
-            self.pubJstat_Thr = PublishIOstats(jobstat_Q)
-            self.pubJstat_Thr.start()
-
-            #print "\nProvenance FS agent has been restarted."
+            self.iostats_proc = CollectIOstats(self.shutdown)
+            self.iostats_proc.start()
 
             # Keep the main thread running to catch signals
             while True:
                 time.sleep(0.5)
-                if not self.IOStats_Thr.isAlive() or not self.pubJstat_Thr.isAlive():
+                if not self.iostats_proc.is_alive():
                     raise MonitoringExitExp
 
         except MonitoringExitExp:
             log(Mode.APP_EXIT, "***************** Provenance Lustre Agent Stopped *****************")
+            self.shutdown.set()
             try:
-                if not self.IOStats_Thr is None:
-                    self.IOStats_Thr.exit_flag.set()
-                    self.IOStats_Thr.join()
-                if not self.pubJstat_Thr is None:
-                    self.pubJstat_Thr.exit_flag.set()
-                    self.pubJstat_Thr.join()
+                if self.iostats_proc and self.iostats_proc.is_alive():
+                    time.sleep(2)
+                    self.iostats_proc.terminate()
+                    self.iostats_proc.join()
+                print("I'm finished")
 
             except Exception as exp:
                 log(Mode.IO_COLLECTOR, "[Error on Exit]" + str(exp))

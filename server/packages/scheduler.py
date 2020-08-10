@@ -22,7 +22,6 @@ class JobScheduler:
         self.__schedulers = {
             'uge' : self.__get_UGE_JobInfo
         }
-
         # -------------------------------------------------------------------------------------
         # Following section executes when [uge] section appears in server.conf
         #
@@ -45,6 +44,13 @@ class JobScheduler:
         # Call the proper method based on the scheduler type
         return self.__schedulers[sched](cluster, sched, jobId, taskid)
 
+    #
+    # Get Job Submission Script content
+    #
+    def getJobScript(self, jobinfo: 'JobInfo'):
+        # Check the scheduler type
+        if jobinfo.sched_type == "uge":
+            return self.__ugeService.getUGE_JobScript(jobinfo)
 
     #
     # This method Collects Job Info from Univa Grid Engine (UGE) job scheduler by:
@@ -141,6 +147,7 @@ class JobInfo(object):
         self.start_time = None
         self.end_time = None
         self.username = None
+        self.job_script = None
 
     # This function returns a unique ID for every objects with the same JobID, Scheduler, and cluster
     def uniqID(self):
@@ -165,6 +172,17 @@ class JobInfo(object):
         attrDict['uid'] = self.uniqID()
         #
         return attrDict
+
+    # Update Job Info attributes
+    def update(self, jobinfo: 'JobInfo'):
+        attrs = [atr for atr in dir(jobinfo) if (not atr.startswith('__')) and (not callable(getattr(jobinfo, atr)))]
+        for atr in attrs:
+            self_atr = getattr(self, atr)
+            dest_atr = getattr(jobinfo, atr)
+            # Update all the values only if they're not None and have different values
+            if dest_atr and self_atr != dest_atr:
+                setattr(self, atr, dest_atr)
+
 
     #
     # Defines the Status of the current Job
@@ -203,6 +221,17 @@ class UGEJobInfo(JobInfo):
         self.wallclock = None
         self.failed_no = None
         self.q_del = []
+        self.undef_cnt = 0
+
+    # Override the JobInfo Superclass update method for UGEJobInfo
+    def update(self, jobinfo: 'JobInfo'):
+        super().update(jobinfo)
+        # Just add a counter for UNDEF status to avoid letting an ever-undef
+        # job to stuck in the memory of the Provenance server
+        if self.status == JobInfo.Status.UNDEF:
+            self.undef_cnt += 1
+        else:
+            self.undef_cnt = 0
 
 #
 # In any case of Error, Exception, or Mistake JobSchedulerException will be raised

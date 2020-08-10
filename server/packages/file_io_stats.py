@@ -12,13 +12,24 @@
 from communication import ServerConnection, CommunicationExp
 from config import ServerConfig, ConfigReadExcetion
 from multiprocessing import Process, Queue, Event
+from yaml import Loader, load as yaml_load
 from exceptions import ProvenanceExitExp
 from persistant import FinishedJobs
+from threading import Thread, Lock, get_ident
 from typing import Dict, List, Set
+from functools import partial
 from logger import log, Mode
 import hashlib
 import ctypes
 import json
+import time
+
+# Try to load the PyYaml if it's been compiled against LibYAML
+# which is more efficient (Looks like CLoader has a bug!)
+# try:
+#     from yaml import CLoader as Yaml_Loader
+# except ImportError:
+#     from yaml import Loader as Yaml_Loader
 
 #
 # This Class defines a new process which listens to the incoming port and collects
@@ -34,9 +45,15 @@ class IOStatsListener(Process):
         self.finishedJobs = FinishedJobs()
         self.config = ServerConfig()
         self._shut_down = stop_flag
+        self._threads: Dict[int, Thread] = {}
+        self._lock = Lock()
         try:
+            # Get IO Stat Listener Params
+            self._iostats_queue = self.config.getIOListener_Queue()
+            self._iostats_exchange = self.config.getIOListener_Exch()
             self.__MDS_hosts = self.config.getMDS_hosts()
             self.__OSS_hosts = self.config.getOSS_hosts()
+            self._jobIdVars = self.config.getJobIdVars()
 
         except ConfigReadExcetion as confExp:
             log(Mode.FILE_IO_STATS, confExp.getMessage())
@@ -48,7 +65,7 @@ class IOStatsListener(Process):
             comm = ServerConnection()
             # Start collecting IO statistics
             # ioStats_recv function will take care of incoming data
-            comm.Collect_io_stats(self.ioStats_receiver)
+            comm.start_listener(self._iostats_queue, self._iostats_exchange, self.on_iostats_recieved)
 
         except CommunicationExp as commExp:
             log(Mode.FILE_IO_STATS, commExp.getMessage())
@@ -59,13 +76,29 @@ class IOStatsListener(Process):
         except Exception as exp:
             log(Mode.FILE_IO_STATS, str(exp))
 
+    # This method gets called when a new data fetched from the message broker queue
+    # Then, it will handle the data process in multi-thread manner
+    def on_iostats_recieved(self, channel, method, properties, body):
+        # Get the unique delivery_tag of this AMQP message:
+        delivery_tag = method.delivery_tag
+        # Get current connection
+        connection = channel._connection
+
+        # Terminate if the stop_flag was set
+        if self._shut_down.is_set():
+            self._terminate(connection, channel, delivery_tag)
+            return
+
+        # Create a Thread for processing incoming I/O Stats Data
+        thrd = Thread(target=self.ioStats_processing, args=(connection, channel, delivery_tag, body, self._lock))
+        thrd.start()
+        # Keep the history of threads
+        self._threads[thrd.ident] = thrd
+
+
     # This function will be triggered as soon as RabbitMQ receives data from
     # agents on jobStat queue
-    def ioStats_receiver(self, ch, method, properties, body):
-        # ---------- Terminate if the stop_flag was set ----------------
-        if self._shut_down.is_set():
-            ch.stop_consuming()
-            return
+    def ioStats_processing(self, connection, channel, delivery_tag, body, lock):
 
         mdsStatObjLst : List[MDSDataObj] = []
         ossStatObjLst : List[OSSDataObj] = []
@@ -75,24 +108,25 @@ class IOStatsListener(Process):
         io_stat_map = json.loads(body.decode("utf-8"))
         # The server host name
         lustre_server = io_stat_map["server"]
+
         # Check whether the IO stat data comes from MDS or OSS.
         # Then choose the proper function
         if lustre_server in self.__MDS_hosts:
-            # Then data should be processed for MDS
+            # Parse the MDS data in a separate thread
             blockedJobs, mdsStatObjLst = self.__parseIoStats_mds(io_stat_map, finished_jobIds)
-            # Manage Finished Job IDs
-            self.__refine_finishedJobs(lustre_server, blockedJobs, finished_jobIds)
 
         elif lustre_server in self.__OSS_hosts:
-            # Parse the OSS IO stats
+            # Parse the OSS data in a separate thread
             blockedJobs, ossStatObjLst = self.__parseIoStats_oss(io_stat_map, finished_jobIds)
-            # Manage Finished Job IDs
-            self.__refine_finishedJobs(lustre_server, blockedJobs, finished_jobIds)
 
         else:
             # Otherwise the data should be processed for OSS
             raise IOStatsException("The Source of incoming data does not match "
                                     +" with MDS/OSS hosts in 'server.conf'")
+
+        # Manage Finished Job IDs
+        with lock:
+            self.__refine_finishedJobs(lustre_server, blockedJobs, finished_jobIds)
 
         # Put mdsStatObjLst into the MSDStat_Q
         if mdsStatObjLst:
@@ -106,6 +140,27 @@ class IOStatsListener(Process):
                                    f"{io_stat_map['timestamp']};"
                                    f"{io_stat_map.get('serverLoad', [0.0, 0.0, 0.0])};"
                                    f"{io_stat_map.get('serverMemory', [0, 0])}")
+
+        # Send ACK message after the data processing is done
+        threadsafe_ACK = partial(ServerConnection.ack_message, channel, delivery_tag)
+        connection.add_callback_threadsafe(threadsafe_ACK)
+
+    # Terminate the File IO States loop
+    def _terminate(self, connection, channel, delivery_tag):
+        # Reject the incoming data and put it back into the queue
+        channel.basic_reject(delivery_tag, requeue=True)
+        # signal consuming loop to exit
+        channel.stop_consuming()
+        # Close the channel
+        if channel.is_open:
+            channel.close()
+        # Close the connection
+        if connection and connection.is_open:
+            connection.close()
+        # Wait for the processing threads to finish
+        for thr in list(self._threads.values()):
+            if thr and thr.is_alive():
+                thr.join()
 
 
     # this method finds the finished_Job_IDs that no more exist on Lustre JobStat
@@ -127,8 +182,8 @@ class IOStatsListener(Process):
 
     #
     # Convert/Map received data from MDS servers into a list of "MDSDataObj" data type
-    #@staticmethod
-    def __parseIoStats_mds(self, data: Dict[str, str], finished_jobIds: dict) -> (Set, List):
+    #
+    def __parseIoStats_mds(self, data: Dict[str, str], finished_jobIds: Dict) -> (Set, List):
         # Create a List of MDSDataObj
         mdsObjLst: List[MDSDataObj] = []
         # Create a list for those jobs which will be blocked since they're already finished
@@ -136,70 +191,52 @@ class IOStatsListener(Process):
         timestamp = data["timestamp"]
         serverHost = data["server"]
         serverTarget = data["fstarget"]
-        max_age = int(data["maxAge"])
-        # Filter out a group of received JobStats of different jobs
-        jobstatLst = data["output"].split("job_stats:")
-        # drop the first element because its always useless
-        del jobstatLst[0]
-        # Split jobs in JobStat list by '-' and skip the first element which is empty
-        jobstatLst = jobstatLst[0].split('-')[1:]
-        # Iterate over the jobstatLst
-        for jobstat in jobstatLst:
-            # define mdsObj but do not initiate it
-            mdsObj = None
-            # Parse the JobStat output line by line
-            for line in jobstat.splitlines():
-                # skip empty lines
-                if not line.strip():
-                    continue
-                # First column of each line is the attribute
-                attr = line.split(':')[0].strip()
-                # extract the job_id value which
-                if "job_id" in attr:
-                    # get the id
-                    jobid = line.split(':')[1].strip()
-
-                    # If jobid[.taskid] appears among the list of finished jobs,
-                    # then ignore the Jobstats data of this job
-                    if jobid in finished_jobIds[serverHost]:
-                        blockedJobs.add(jobid)
-                        break
-                    # Create new MDSDataObj
-                    mdsObj = MDSDataObj()
-                    # if the id format is not compatible with "cluster_scheduler_ID" then it's a process id
-                    if '_' not in jobid:
-                        mdsObj.procid = jobid
-                    # Otherwise, it is a JOB
-                    else:
-                        mdsObj.cluster, mdsObj.sched_type, mdsObj.jobid = jobid.split('_')\
-
-                        # if the jobid is separated by '.' then it means the job is an array job
-                        if '.' in mdsObj.jobid:
-                            mdsObj.jobid, mdsObj.taskid = mdsObj.jobid.split('.')
-
-                # Snapshot from Lustre reports
-                elif "snapshot_time" in attr:
-                    snapshot = line.split(':')[1].strip()
-                    mdsObj.snapshot_time = int(snapshot) if snapshot.isnumeric() else snapshot
-                # Pars the attributes that are available in MDSDataObj
-                else:
-                    # skip the unwanted attributes
-                    if attr not in mdsObj.__dict__.keys():
-                        continue
-                    # Set the corresponding attribute in the MDSDataObj object
-                    value = line.split(':')[2].split(',')[0].strip()
-                    if value.isnumeric(): value = int(value)
-                    setattr(mdsObj, attr, value)
-
-            if mdsObj:
+        # Parse the received data which is in YAML format
+        parsed_data = yaml_load(data["output"], Loader=Loader)
+        # Proceed if data was parsed successfully
+        if parsed_data and "job_stats" in parsed_data.keys():
+            # Get the list of all job stats
+            jobstatLst = parsed_data['job_stats']
+            # Iterate over all job stats in the list
+            for jobstat in jobstatLst:
+                # define mdsObj but do not initiate it
+                mdsObj = MDSDataObj()
                 # Timestamp recorded on agent side
                 mdsObj.timestamp = timestamp
-                # Maximum Age of the JobStat Rec on Server
-                mdsObj.maxAge = max_age
                 # The host name of the server
                 mdsObj.mds_host = serverHost
                 # The MDT target
                 mdsObj.mdt_target = serverTarget
+                # Extract job_id
+                jobid = str(jobstat['job_id'])
+
+                # if the id format is not compatible with "cluster_scheduler_ID" then it's a process id
+                if not any([jobid.startswith(jobid_var) for jobid_var in self._jobIdVars]):
+                    mdsObj.procid = jobid
+                # Otherwise, it is a JOB
+                else:
+                    # If cluster_sched_jobid[.taskid] appears among the list of finished jobs,
+                    # then ignore the JobStats data of this job
+                    if jobid in finished_jobIds[serverHost]:
+                        blockedJobs.add(jobid)
+                        break
+
+                    mdsObj.cluster, mdsObj.sched_type, mdsObj.jobid = jobid.split('_')
+                    # if the jobid is separated by '.' then it means the job is an array job
+                    if '.' in mdsObj.jobid:
+                        mdsObj.jobid, mdsObj.taskid = mdsObj.jobid.split('.')
+
+                # collect rest of the properties
+                for attr, value in jobstat.items():
+                    # Ignore anything else
+                    if attr not in mdsObj.__dict__.keys():
+                        continue
+
+                    if isinstance(value, dict):
+                        setattr(mdsObj, attr, value.get('samples', None))
+                    else:
+                        setattr(mdsObj, attr, value)
+
                 # Put the mdsObj into a list
                 mdsObjLst.append(mdsObj)
 
@@ -208,8 +245,8 @@ class IOStatsListener(Process):
 
     #
     # Convert/Map received data from MDS servers into "OSSDataObj" data type
-    #@staticmethod
-    def __parseIoStats_oss(self, data: Dict[str, str], finished_jobIds: dict) -> (Set, List):
+    #
+    def __parseIoStats_oss(self, data: Dict[str, str], finished_jobIds: Dict) -> (Set, List):
         # Create a List of OSSDataObj
         ossObjLst: List[OSSDataObj] = []
         # Create a list for those jobs which will be blocked since they're already finished
@@ -217,85 +254,58 @@ class IOStatsListener(Process):
         timestamp = data["timestamp"]
         serverHost = data["server"]
         serverTarget = data["fstarget"]
-        max_age = int(data["maxAge"])
-        # Filter out a group of received JobStats of different jobs
-        jobstatLst = data["output"].split("job_stats:")
-        # drop the first element because its always useless
-        del jobstatLst[0]
-        # Split jobs in JobStat list by '-' and skip the first element which is empty
-        jobstatLst = jobstatLst[0].split('-')[1:]
-        # Iterate over the jobStatLst
-        for jobstat in jobstatLst:
-            # define ossObj but do not initiate it
-            ossObj = None
-            # Parse the JobStat output line by line
-            for line in jobstat.splitlines():
-                # skip empty lines
-                if not line.strip():
-                    continue
-                # First column of each line is the attribute
-                attr = line.split(':')[0].strip()
-                # extract the job_id value which is like: $CLUSTER_SCHED_$JOBID
-                if "job_id" in attr:
-                    # get the id
-                    jobid = line.split(':')[1].strip()
+        # Parse the received data which is in YAML format
+        parsed_data = yaml_load(data["output"], Loader=Loader)
+        # Proceed if data was parsed successfully
+        if parsed_data and "job_stats" in parsed_data.keys():
+            # Get the list of all job stats
+            jobstatLst = parsed_data['job_stats']
+            # Iterate over all job stats in the list
+            for jobstat in jobstatLst:
+                # define ossObj but do not initiate it
+                ossObj = OSSDataObj()
+                # Timestamp recorded on agent side
+                ossObj.timestamp = timestamp
+                # The host name of the server
+                ossObj.oss_host = serverHost
+                # The MDT target
+                ossObj.ost_target = serverTarget
+                # Extract job_id
+                jobid = str(jobstat['job_id'])
+                # If cluster_sched_jobid[.taskid] appears among the list of finished jobs,
+                # then ignore the Jobstats data of this job
+                if jobid in finished_jobIds[serverHost]:
+                    blockedJobs.add(jobid)
+                    break
 
-                    # If jobid[.taskid] appears among the list of finished jobs,
-                    # then ignore the Jobstats data of this job
-                    if jobid in finished_jobIds[serverHost]:
-                        blockedJobs.add(jobid)
-                        break
-                    # Create new OSSDataObj
-                    ossObj = OSSDataObj()
-                    # if the id format is not compatible with "cluster_scheduler_ID" then it's a process id
-                    if '_' not in jobid:
-                        ossObj.procid = jobid
-                    # Otherwise, it is a JOB
-                    else:
-                        ossObj.cluster, ossObj.sched_type, ossObj.jobid = jobid.split('_')\
-
-                        # if the jobid is separated by '.' then it means the job is an array job
-                        if '.' in ossObj.jobid:
-                            ossObj.jobid, ossObj.taskid = ossObj.jobid.split('.')
-
-                # Snapshot from Lustre reports
-                elif "snapshot_time" in attr:
-                    snapshot = line.split(':')[1].strip()
-                    ossObj.snapshot_time = int(snapshot) if snapshot.isnumeric() else snapshot
-                # Parse read_bytes and write_bytes in a different way
-                elif "_bytes" in attr:
-                    # a set of related parameters for Read and Write operations
-                    # attr_ext holds the position of MIN/MAX/SUM values in the  for each Read/Write
-                    # operation in the JobStats output from OSS (The first item is read/write itself)
-                    attr_ext = {"" : 2, "_min" :4 , "_max" : 5, "_sum" : 6}
-                    for ext in attr_ext:
-                        inx = attr_ext[ext]
-                        objattr = attr + ext # define the name of the attr in OSSDataObj
-                        delim2 = ',' if  inx != 6 else '}' # Splitting the JobStat output is weird!
-                        # Set the corresponding attribute in the OSSDataObj object
-                        value = line.split(':')[inx].split(delim2)[0].strip()
-                        if value.isnumeric(): value = int(value)
-                        setattr(ossObj, objattr, value)
-                # Pars the attributes that are available in OSSDataObj
+                # if the id format is not compatible with "cluster_scheduler_ID" then it's a process id
+                if not any([jobid.startswith(jobid_var) for jobid_var in self._jobIdVars]):
+                    ossObj.procid = jobid
+                # Otherwise, it is a JOB
                 else:
+                    ossObj.cluster, ossObj.sched_type, ossObj.jobid = jobid.split('_')
+                    # if the jobid is separated by '.' then it means the job is an array job
+                    if '.' in ossObj.jobid:
+                        ossObj.jobid, ossObj.taskid = ossObj.jobid.split('.')
+
+                # collect rest of the properties
+                for attr, value in jobstat.items():
                     # skip the unwanted attributes
                     if attr not in ossObj.__dict__.keys():
                         continue
-                    # Set the corresponding attribute in the OSSDataObj object
-                    value = line.split(':')[2].split(',')[0].strip()
-                    if value.isnumeric(): value = int(value)
-                    setattr(ossObj, attr, value)
 
-            if ossObj:
-                # Timestamp recorded on agent side
-                ossObj.timestamp = timestamp
-                # Maximum Age of the JobStat Rec on Server
-                ossObj.maxAge = max_age
-                # The host name of the server
-                ossObj.oss_host = serverHost
-                # The OST target
-                ossObj.ost_target = serverTarget
-                # Put the ossObj into a list
+                    if isinstance(value, dict):
+                        # treat these different
+                        for attr_ext in ['min', 'max', 'sum']:
+                            if attr_ext in value.keys():
+                                setattr(ossObj, '_'.join([attr, attr_ext]), value.get(attr_ext))
+
+                        setattr(ossObj, attr, value.get('samples', None))
+
+                    else:
+                        setattr(ossObj, attr, value)
+
+                # Put the mdsObj into a list
                 ossObjLst.append(ossObj)
 
         # Rerun the JobStat output in form of OSSDataObj data type
@@ -327,6 +337,7 @@ class MDSDataObj(object):
         self.rename = 0
         self.getattr = 0
         self.setattr = 0
+        self.statfs = 0
         self.samedir_rename = 0
         self.crossdir_rename = 0
 
@@ -339,11 +350,13 @@ class MDSDataObj(object):
 
     # This function returns a unique ID for every objects with the same JobID, Scheduler, and cluster
     def uniqID(self):
+        # We create uniqID for MDS data even for non-JOB (process) activities
+        # to store them in influxDB
         if self.procid:
-            # No hash for this object if jobID is not defined
-            return None
-        # calculate the MDS hash
-        obj_id = ''.join(filter(None, [self.sched_type, self.cluster, self.jobid, self.taskid]))
+            obj_id = self.procid
+        else:
+            obj_id = ''.join(filter(None, [self.sched_type, self.cluster, self.jobid, self.taskid]))
+        # calculate the OSS hash
         hash_id = hashlib.md5(obj_id.encode(encoding='UTF=8'))
         return hash_id.hexdigest()
 
@@ -401,11 +414,13 @@ class OSSDataObj(object):
     # This function returns a unique ID for every objects with the same JobID, Scheduler, and cluster
     # More reliable over hash function!!
     def uniqID(self):
+        # We create uniqID for OSS data even for non-JOB (process) activities
+        # to store them in influxDB
         if self.procid:
-            # No hash for this object if jobID is not defined
-            return None
+            obj_id = self.procid
+        else:
+            obj_id = ''.join(filter(None, [self.sched_type, self.cluster, self.jobid, self.taskid]))
         # calculate the OSS hash
-        obj_id = ''.join(filter(None, [self.sched_type, self.cluster, self.jobid, self.taskid]))
         hash_id = hashlib.md5(obj_id.encode(encoding='UTF=8'))
         return hash_id.hexdigest()
 

@@ -60,6 +60,13 @@ stop)
   fi
   # Send SIGHUP then the main process will start wrapping gup the jobs
   kill -s SIGHUP "$( cat $PID_FILE )"
+  # Wait until the process finishes
+  waitpid=0
+  until [ $waitpid -eq 1 ]; do
+    ps -p "$( cat $PID_FILE )" &> /dev/null
+    waitpid="$?"
+    sleep 1
+  done
   # Remove the PID file
   rm -f $PID_FILE
   ;;

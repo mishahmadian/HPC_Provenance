@@ -7,8 +7,10 @@
 
  Misha Ahmadian (misha.ahmadian@ttu.edu)
 """
+from threading import Event
 import socket
 import sys
+import time
 # Access to the 'packages' directory for all python files
 sys.path.append('../packages/')
 from schedComm import SchedConnection, CommunicationExp
@@ -26,9 +28,10 @@ def main():
     except Exception as exp:
         print(f"[Error]: {exp}")
 
-def callback(msg):
+def callback(msg, result: list, event: 'Event'):
+    timer = 5
     print(f"Recieved an RPC request from [{msg}]")
-    return f"[{socket.gethostname()}] recieved an RPC message from [{msg}]"
+    result.append(f"[{socket.gethostname()}] recieved an RPC message from [{msg}]")
 
 if __name__ == '__main__':
     try:

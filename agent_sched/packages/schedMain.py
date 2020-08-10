@@ -10,6 +10,7 @@ from schedConfig import SchedConfig, ConfigReadExcetion
 from schedComm import SchedConnection, CommunicationExp
 from ugeSchedService import UGEAccountingInfo
 from schedLogger import log, Mode
+from threading import Event
 import signal
 import json
 import sys
@@ -67,17 +68,17 @@ class SchedMain:
     # Receiving RPC request and handling the response that has to be sent
     # back to the RPC client
     #
-    def _on_rpc_callback(self, request: str) -> str:
+    def _on_rpc_callback(self, request: str, response: list, event: 'Event') -> None:
         request = json.loads(request)
         if request['action'] == 'uge_acct':
             ugeAcctInfo = UGEAccountingInfo(self._config)
-            ugeAcctLst = ugeAcctInfo.getAcctountingInfo(request['data'])
+            ugeAcctLst = ugeAcctInfo.getAcctountingInfo(request['data'], event)
             if ugeAcctLst:
-                return '[^@]'.join(ugeAcctLst)
-            return 'NONE'
+                response.append('[^@]'.join(ugeAcctLst))
+            response.append('NONE')
 
         # else return nothing
-        return 'NONE'
+        response.append('NONE')
 
     #
     # Cleanup the RabbitMQ RPC Queue

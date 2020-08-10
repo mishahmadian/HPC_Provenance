@@ -18,7 +18,7 @@ class MDSapi(Resource):
             lustre_schema = config.getSchema()
             # Report if lustre schema was empty
             if not lustre_schema:
-                log(Mode.OSS_API, "Lustre Schema was not found")
+                log(Mode.MDS_API, "Lustre Schema was not found")
 
             # Get the lustre schema in dictionary format
             schema_dict = json.loads(lustre_schema)
@@ -26,7 +26,7 @@ class MDSapi(Resource):
             self.mds_schema = schema_dict.get('mds', None)
 
         except ConfigReadExcetion as confExp:
-            log(Mode.OSS_API, confExp.getMessage())
+            log(Mode.MDS_API, confExp.getMessage())
 
     def get(self, resource, target=None):
         """
@@ -52,20 +52,24 @@ class MDSapi(Resource):
             db = MongoDB()
             # Get the MDS/Jobs/ and Files that are running on MDS
             if all([target, req_data['files'], req_data['files'] == "y"]):
-                result = db.query_fileop_mds(target, req_data['uid'], req_data['js'],
-                                             req_data['sort'], req_data['days'])
+                result = db.query_fileop_mds(target, req_data['uid'], req_data['js'], req_data['sort'],
+                                             req_data['days'], req_data['user'], req_data['cluster'])
             # A target has to be selected
             elif target and req_data['files']:
                 return self._error("Cannot list all the files without selecting a terget MDT")
             else:
             # Otherwise, get the MDS and JobInfo Data
-                result = db.query_mds_jobs(resource, target, req_data['uid'], req_data['js'],
-                                           req_data['sort'], req_data['days'])
+                result = db.query_mds_jobs(resource, target, req_data['uid'], req_data['js'], req_data['sort'],
+                                           req_data['days'], req_data['user'], req_data['cluster'])
 
             # Convert Datetime object to epoch
             for rec in result:
-                if rec.get(u"modified_time", None):
-                    rec[u"modified_time"] = rec[u"modified_time"].timestamp()
+                # Convert DateTime data to a serializable format
+                if  rec.get("mds_info", None) and rec["mds_info"].get("modified_time", None):
+                    rec["mds_info"]["modified_time"] = rec["mds_info"]["modified_time"].timestamp()
+
+                elif rec.get("fileop_info", None) and rec["fileop_info"].get("create_time", None):
+                    rec["fileop_info"]["create_time"] = rec["fileop_info"]["create_time"].timestamp()
 
             if result:
                 return {"result": result}, 200
@@ -73,7 +77,7 @@ class MDSapi(Resource):
                 return self._error("No result was found", code=404)
 
         except DBManagerException as dbExp:
-            log(Mode.OSS_API, dbExp.getMessage())
+            log(Mode.MDS_API, dbExp.getMessage())
             return self._error("Error in Database Query")
 
         finally:
@@ -88,7 +92,9 @@ class MDSapi(Resource):
         parser = reqparse.RequestParser()
         parser.add_argument('files', type=str, required=False)
         parser.add_argument('uid', type=str, required=False)
+        parser.add_argument('cluster', type=str, required=False)
         parser.add_argument('js', type=str, required=False)
+        parser.add_argument('user', type=str, required=False)
         parser.add_argument('sort', type=str, required=False)
         parser.add_argument('days', type=int, required=False)
         return parser.parse_args()

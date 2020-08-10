@@ -36,14 +36,14 @@ class ServerConfig:
     # Validate the server.conf to ensure all the mandatory sections and options
     # are defined and correct
     def __validateConfig(self):
-        config = {'lustre' : ['mds_hosts', 'oss_hosts', 'mdt_targets'],
-                  'rabbitmq' : ['server', 'port', 'username', 'password', 'vhost'],
+        config = {'lustre' : ['mds_hosts', 'oss_hosts', 'jobid_vars', 'mdt_mnt'],
+                  'rabbitmq' : ['server', 'port', 'username', 'password', 'vhost', 'prefetch', 'heartbeat', 'timeout'],
                   'io_listener' : ['exchange', 'queue'],
-                  'changelogs' : ['parallel','interval', 'users'],
+                  'changelogs' : ['files_ops', 'parallel','interval', 'mdt_targets', 'users', 'filter_procs'],
                   'aggregator' : ['interval'],
-                  '*uge' : ['clusters', 'address', 'port', 'acct_interval'],
+                  '*uge' : ['clusters', 'address', 'port', 'acct_interval', 'spool_dirs'],
                   'mongodb' : ['host', 'port', 'auth_mode', 'username', 'password', 'database'],
-                  'influxdb' : ['host', 'port', 'username', 'password', 'database']}
+                  'influxdb' : ['host', 'port', 'username', 'password', 'database', 'tzone']}
         # Iterate over the Sections in config file
         for section in config.keys():
             # all the sections with '*' are optional
@@ -135,11 +135,6 @@ class ServerConfig:
 
     # ============= Public Methods =========================================
 
-    # Get a list of Lustre fsname(s) defined in Config file
-    #   Return: List
-    def getMdtTargets(self) -> list:
-        return self.__getConfigValue('lustre', 'mdt_targets', list)
-
     # Get a list of MDS host names defined in Config file
     #   Return: List
     def getMDS_hosts(self) -> list:
@@ -149,6 +144,17 @@ class ServerConfig:
     #   Return: List
     def getOSS_hosts(self) -> list:
         return self.__getConfigValue('lustre', 'oss_hosts', list)
+
+    # Get a list of jobid_var that are being sent to lustre
+    #   Return: List
+    def getJobIdVars(self) -> list:
+        return self.__getConfigValue('lustre', 'jobid_vars', list)
+
+    # Get the MDT to Mount Point schema
+    #   Return: str
+    def getMDT_MNT(self) -> str:
+        mdt_mnt = self.__getConfigValue('lustre', 'mdt_mnt', str)
+        return mdt_mnt.strip("][")
 
     # Get the name of the server that RabbitMQ-Server is Running
     # Return: String
@@ -175,6 +181,21 @@ class ServerConfig:
     def getVhost(self) -> str:
         return self.__getConfigValue('rabbitmq', 'vhost', str)
 
+    # Get number of data that has to be prefetched by RabbitMQ
+    # Return: integer
+    def getPrefetchCount(self) -> int:
+        return int(self.__getConfigValue('rabbitmq', 'prefetch', int))
+
+    # Get RabbitMQ connection heartbeat timeout
+    # Return: float
+    def getHeartBeat(self) -> float:
+        return int(self.__getConfigValue('rabbitmq', 'heartbeat', float))
+
+    # Get RabbitMQ blocked connection timeout
+    # Return: float
+    def getBlockedConnTimeout(self) -> float:
+        return int(self.__getConfigValue('rabbitmq', 'timeout', float))
+
     # Get the name of the Queue that io_listener uses
     # Return: String
     def getIOListener_Queue(self) -> str:
@@ -184,6 +205,11 @@ class ServerConfig:
     # Return: String
     def getIOListener_Exch(self) -> str:
         return self.__getConfigValue('io_listener', 'exchange', str)
+
+    # Get the list of File Operations that have to be captured
+    # Return: List
+    def getChLogsFileOPs(self) -> list:
+        return self.__getConfigValue('changelogs', 'files_ops', list)
 
     # Get number of process that can be running in parallel to collect ChangeLogs
     # Return: Int
@@ -195,10 +221,26 @@ class ServerConfig:
     def getChLogsIntv(self) -> float:
         return self.__getConfigValue('changelogs', 'interval', float)
 
+    # Get a list of Lustre fsname(s) defined in Config file
+    #   Return: List
+    def getMdtTargets(self) -> list:
+        return self.__getConfigValue('changelogs', 'mdt_targets', list)
+
     # Get the list of ChangeLogs users defined for each MDT
     # Return: List
     def getChLogsUsers(self) -> list:
         return self.__getConfigValue('changelogs', 'users', list)
+
+    # Include the File OPs for non-job processes
+    # Return: boolean
+    def isFilterProcs(self) -> bool:
+        filterProc = self.__getConfigValue('changelogs', 'filter_procs', str)
+        if filterProc.lower() == "true":
+            return True
+        elif filterProc.lower() == "false":
+            return False
+        else:
+            raise ConfigReadExcetion("The 'filter_procs' parameter under [changelogs] section must be True/False")
 
     # Get the interval between aggregating the received data in the queue
     # Return: Float
@@ -224,6 +266,11 @@ class ServerConfig:
     # return list
     def getUGE_Port(self) -> list:
         return self.__getConfigValue('uge', 'ports', list)
+
+    # Get List of UGE spool directories
+    # return list
+    def getUGE_spool_dirs(self) -> list:
+        return self.__getConfigValue('uge', 'spool_dirs', list)
 
     # Get the RPC Calls Interval for collecting UGE accounting data
     # Return: Float
@@ -270,20 +317,25 @@ class ServerConfig:
     def getInfluxdbPort(self) -> int:
         return self.__getConfigValue('influxdb', 'port', int)
 
-    # Get the MongoDB username
+    # Get the InfluxDB username
     # Return: String
     def getInfluxdbUser(self) -> str:
         return self.__getConfigValue('influxdb', 'username', str)
 
-    # Get the MongoDB password
+    # Get the InfluxDB password
     # Return: String
     def getInfluxdbPass(self) -> str:
         return self.__getConfigValue('influxdb', 'password', str)
 
-    # Get the MongoDB source database
+    # Get the InfluxDB source database
     # Return: String
     def getInfluxdb_DB(self) -> str:
         return self.__getConfigValue('influxdb', 'database', str)
+
+    # Get the current time zone
+    # Return: String
+    def getTimeZone(self) -> str:
+        return self.__getConfigValue('influxdb', 'tzone', str)
 
 #
 # In any case of Error, Exception, or Mistake ConfigReadExcetion will be raised

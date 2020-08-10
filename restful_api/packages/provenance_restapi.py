@@ -7,6 +7,7 @@
 """
 from api_config import Config, ConfigReadExcetion
 from provenance_jobinfo_api import JobInfo
+from provenance_jobscript import JobScript
 from provenance_oss_api import OSSapi
 from provenance_mds_api import MDSapi
 from gevent.pywsgi import WSGIServer
@@ -69,6 +70,10 @@ if __name__ == '__main__':
     rest_api.add_resource(JobInfo,
                           "/provenance/jobinfo",
                           "/provenance/jobinfo/<string:uid>")
+
+    # RestAPI for Job Submission Script
+    rest_api.add_resource(JobScript,
+                          "/provenance/jobscript/<string:cluster>/<string:jobid>")
 
     # Setup the API Server
     #api_app.run(port=5000, host="0.0.0.0", debug=True)

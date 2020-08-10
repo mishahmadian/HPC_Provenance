@@ -93,4 +93,7 @@ class Mode(Enum):
     CONFIG = auto()
     MONGODB = auto()
     OSS_API = auto()
+    MDS_API = auto()
+    JOB_INFO_API= auto()
+    JOB_SCRIPT_API = auto()
 

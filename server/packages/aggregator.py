@@ -6,8 +6,8 @@
 
  Misha ahmadian (misha.ahmadian@ttu.edu)
 """
+from scheduler import JobScheduler, JobInfo, UGEJobInfo, JobSchedulerException
 from multiprocessing.managers import BaseManager, NamespaceProxy, DictProxy
-from scheduler import JobScheduler, JobInfo, JobSchedulerException
 from multiprocessing import Process, Event, Manager, Lock, Queue
 from config import ServerConfig, ConfigReadExcetion
 from threading import Event as Event_Thr, Thread
@@ -15,13 +15,15 @@ from file_io_stats import MDSDataObj, OSSDataObj
 from db_operations import MongoOPs, InfluxOPs
 from exceptions import ProvenanceExitExp
 from collections import defaultdict
+from persistant import FinishedJobs
+from typing import List, Dict, Set
 from file_op_logs import FileOpObj
 from bisect import bisect_left
-from typing import List, Dict
 from logger import log, Mode
 from uge_service import UGE
 import subprocess
 import time
+import re
 
 #------ Global Variable ------
 # Timer Value
@@ -108,8 +110,7 @@ class Aggregator(Process):
                                                                             self.jobInfo_Q,)))
                 # Aggregate Job Info(s) from Job Scheduler(s)
                 procList.append(Process(target=self._aggregateJobs, args=(jobScheduler, provenanceTbl,
-                                                                          self.jobInfo_Q, provenanceObjManager,
-                                                                            aggregatorLock,)))
+                                                                          self.jobInfo_Q)))
 
                 # Start all the aggregator processes:
                 for proc in procList:
@@ -157,7 +158,7 @@ class Aggregator(Process):
                 self._clearProvenTbl(provenanceTbl)
 
             # Terminate timer after flag is set
-            timer_flag.set()
+            #timer_flag.set()
             # jobScheduler.close()
 
         except JobSchedulerException as jobSchedExp:
@@ -204,24 +205,27 @@ class Aggregator(Process):
                         # Ignore None hash IDs (i.e. Procs)
                         if uniq_id is None:
                             continue
+
                         # if no data has been collected for this JonID_Cluster_SchedType,
                         #  then create a ProvenanceObj and fill it
                         with aggregatorLock:
-                            if not provenanceTbl.get(uniq_id):
+                            if not provenanceTbl.get(uniq_id, None):
                                 provenanceTbl[uniq_id] = provObjMngr.ProvenanceObj()
-                                # create an empty JobInfo object
-                                jobInfo = JobInfo()
-                                jobInfo.cluster = obj_Q.cluster
-                                jobInfo.sched = obj_Q.sched_type
-                                jobInfo.jobid = obj_Q.jobid
-                                jobInfo.taskid = (obj_Q.taskid if obj_Q.taskid else None)
-                                jobInfo.status = JobInfo.Status.NONE
-                                provenanceTbl._callmethod('__getitem__', (uniq_id,)).updateJobInfo(jobInfo)
+                                # Only create jobID for JOB data
+                                if obj_Q.jobid:
+                                    # create an empty JobInfo object
+                                    jobInfo = JobInfo()
+                                    jobInfo.cluster = obj_Q.cluster
+                                    jobInfo.sched_type = obj_Q.sched_type
+                                    jobInfo.jobid = obj_Q.jobid
+                                    jobInfo.taskid = (obj_Q.taskid if obj_Q.taskid else None)
+                                    jobInfo.status = JobInfo.Status.NONE
+                                    provenanceTbl._callmethod('__getitem__', (uniq_id,)).updateJobInfo(jobInfo)
 
-                                # Add a request in jobInfo_Q to get information from corresponding job scheduler
-                                job_info = '_'.join([obj_Q.cluster, obj_Q.sched_type, obj_Q.jobid +
-                                                     ("." + obj_Q.taskid if obj_Q.taskid else "")])
-                                jobInfo_Q.put(job_info)
+                                    # Add a request in jobInfo_Q to get information from corresponding job scheduler
+                                    job_info = '_'.join([obj_Q.cluster, obj_Q.sched_type, obj_Q.jobid +
+                                                         ("." + obj_Q.taskid if obj_Q.taskid else "")])
+                                    jobInfo_Q.put(job_info)
 
                         # Insert the corresponding object into its relevant list (sorted by timestamp)
                         # the _callmethod of Proxy class will take care of the complex object shared between processes
@@ -236,8 +240,7 @@ class Aggregator(Process):
     #
     # Aggregate Job Info objects
     #
-    def _aggregateJobs(self, jobScheduler: JobScheduler, provenanceTbl: 'DictProxy', jobInfo_Q : Queue,
-                       provObjMngr : '_AggregatorManager', aggregatorLock):
+    def _aggregateJobs(self, jobScheduler: JobScheduler, provenanceTbl: 'DictProxy', jobInfo_Q : Queue):
         """
         Aggregate the Job Info objects that come from Job Scheduler(s)
 
@@ -280,8 +283,27 @@ class Aggregator(Process):
                     uniq_id = jobInfo.uniqID()
 
                     # If received a JobInfo that its uniq_id is not present in Provenance Table then ignore it
-                    if not provenanceTbl.get(uniq_id):
+                    provenanceObj = provenanceTbl.get(uniq_id, None)
+                    if not provenanceObj:
                         continue
+
+                    # If job_script is empty then try to get the job script for this job
+                    if not provenanceObj.jobInfo.job_script:
+                        jobInfo.job_script = jobScheduler.getJobScript(jobInfo)
+
+                    # In order to avoid keeping UNDEF JobInfos forever, we make sure they
+                    # do not stay in memory more than 5 times in a row
+                    if isinstance(provenanceObj.jobInfo, UGEJobInfo):
+                        if provenanceObj.jobInfo.undef_cnt >= 5:
+                            # If job has been stuck in UNDEF mode for 5 times in a row
+                            # then we should assume the job is FINISHED (or no more available)
+                            jobInfo.status = JobInfo.Status.FINISHED
+                            # The job has been finished and no more data should be aggregated for this job
+                            finishedJob = cluster + '_' + sched + '_' + str(jobid) + (
+                                "." + str(taskid) if taskid else "")
+                            finJobDB = FinishedJobs()
+                            finJobDB.add(finishedJob)
+
                     # Update the JobInfo for this record in the Provenance Table
                     provenanceTbl._callmethod('__getitem__', (uniq_id,)).updateJobInfo(jobInfo)
                     # Check on this job again in next round if the status is not FINISHED yet
@@ -407,15 +429,18 @@ class ProvenanceObj(object):
         self.MDSDataObj_lst: List[MDSDataObj] = []
         self.OSSDataObj_lst: List[OSSDataObj] = []
         self.FileOpObj_lst: List[FileOpObj] = []
+        self.ignore_file_fids: Set[str] = set()
         self.__MDSDataObj_keys: List[float] = []
         self.__OSSDataObj_keys: List[float] = []
         self.__FileOpObj_keys: List[float] = []
 
     #
     # update the jobInfo object
-    def updateJobInfo(self, jobInfo):
-        self.jobInfo = jobInfo
-        #self.jobInfo.jobid = int(jobInfo.jobid)
+    def updateJobInfo(self, jobinfo):
+        if type(self.jobInfo) is not type(jobinfo):
+            self.jobInfo = jobinfo
+        else:
+            self.jobInfo.update(jobinfo)
 
     # This function receives any type of MDSDataObj, OSSDataObj, or FileOpObj
     # objects and uses the timestamp attribute as the key to sort them while
@@ -433,6 +458,7 @@ class ProvenanceObj(object):
         elif isinstance(dataObj, FileOpObj):
             targetList = self.FileOpObj_lst
             keyList = self.__FileOpObj_keys
+            self._filter_and_ignore(dataObj)
         else:
             raise AggregatorException("[ProvenanceObj] Wrong instance of an object in the Queue")
 
@@ -524,6 +550,14 @@ class ProvenanceObj(object):
 
         # Return the table
         return ossObjTbl
+
+    #
+    # Add to the list of to-be-ignored files that may not need to be
+    # stored in the database
+    def _filter_and_ignore(self, fileObj):
+        if fileObj.target_file and re.match(r"^\.job_finished\.\d+", fileObj.target_file):
+            self.ignore_file_fids.add(fileObj.target_fid)
+
 
 
 #

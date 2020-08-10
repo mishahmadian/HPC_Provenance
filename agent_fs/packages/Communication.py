@@ -19,7 +19,6 @@ class Producer:
             self.__Vhost = self.config.getVhost()
             self.__prodQueue = self.config.getProd_Queue()
             self.__prodExch = self.config.getProd_Exch()
-            self.__interval = self.config.getSendingInterval()
 
         except ConfigReadExcetion as confExp:
             raise CommunicationExp(confExp.getMessage(), CommunicationExp.Type.AMQP_CONFIG)
@@ -82,10 +81,6 @@ class Producer:
                                       ))
         # Close Connection
         self.__closeConnection()
-
-    # Get the Interval time between each Send()
-    def getInterval(self):
-        return self.__interval
 
 #
 # In any case of Error, Exception, or Mistake ConfigReadExcetion will be raised
