@@ -3,7 +3,9 @@
     The Scheduler package talks to the various type of available Job schedulers and collects
     necessary job information from different clusters
 
-        - By now it only works with Univa Grid Engine (UGE)
+        It supports:
+        - Univa Grid Engine (UGE)
+        - SLURM
 
  Misha ahmadian (misha.ahmadian@ttu.edu)
 """
@@ -20,7 +22,7 @@ class JobScheduler:
         self.__ugeService = UGE
         # list of all supported schedulers
         self.__schedulers = {
-            'uge' : self.__get_UGE_JobInfo
+            'uge' : self._get_UGE_JobInfo
         }
         # -------------------------------------------------------------------------------------
         # Following section executes when [uge] section appears in server.conf
@@ -59,7 +61,7 @@ class JobScheduler:
     #
     #   *** We assume both UGERest and UGE Accounting are properly running on q_master node
     #
-    def __get_UGE_JobInfo(self, cluster, sched, jobId, taskid) -> 'UGEJobInfo':
+    def _get_UGE_JobInfo(self, cluster, sched, jobId, taskid) -> 'UGEJobInfo':
         # The requested cluster must exist in server.conf
         uge_clusters = self.config.getUGE_clusters()
         if cluster in uge_clusters:
